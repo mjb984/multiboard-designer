@@ -21,7 +21,8 @@ Goal: faster than 0.4 mm without holes that need cleanup.
 |---|---|---|
 | Snaps, bolts, pins, clips, threads | 0.4 mm (high-flow if available) | Small parts that need a precise fit; they print fast anyway, so a bigger nozzle saves little. |
 | Tiles / plates | **Test 0.6 mm** at 0.2-0.24 mm layers with X-Y hole compensation | Tiles take most of the print time. Holes come out undersized with bigger nozzles; hole compensation offsets them in the slicer instead of post-processing. |
-| Big plain parts (shelves, bins, spacers, mock-up brackets) | 0.8 mm | No precise holes, so speed wins. |
+| Beams, bars, panels, brackets | 0.6 mm | Medium detail; agreed with Mauricio 2026-10-21. |
+| Shelves, bins, plain baskets, spacers | 0.8 mm | Little detail, so speed wins. |
 
 What the sources say:
 - **One nozzle size per print.** Mixing 0.4 and 0.8 mm in a single H2C print is not supported in Bambu Studio; one forum user got it working with a hand-built file and the printer warned about the mismatch. Two tool changes per layer would also eat the time saved. So: separate plates per nozzle size. (forum.bambulab.com/t/259143)
