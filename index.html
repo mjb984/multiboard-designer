@@ -1,0 +1,1011 @@
+<title>Multiboard Designer</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Sans+Condensed:wght@600&display=swap">
+<style>
+/* Layout: workshop bench. Toolbar on top, part library left, 3D bench center, inspector + bill of materials right. */
+:root {
+  --bg: #eef0f2;
+  --panel: #f8f9fa;
+  --ink: #1d2329;
+  --muted: #5d6874;
+  --line: #d3d8de;
+  --accent: #c27c0e;      /* PLA amber */
+  --accent-ink: #ffffff;
+  --sel: #2f7fd1;
+  --bad: #c8372d;
+  --good: #2f8a4f;
+  --viewport: #dfe3e8;
+  --f-display: "IBM Plex Sans Condensed", "Arial Narrow", system-ui, sans-serif;
+  --f-body: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --f-mono: "IBM Plex Mono", ui-monospace, "Cascadia Mono", Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #15191d; --panel: #1c2126; --ink: #e3e7eb; --muted: #95a0ab; --line: #2f363d;
+  --accent: #e9a03b; --accent-ink: #1b1305; --sel: #5aa6f0; --bad: #ef6a5f; --good: #5cc282; --viewport: #20262c;
+  color-scheme: dark } }
+:root[data-theme="dark"] {
+  --bg: #15191d; --panel: #1c2126; --ink: #e3e7eb; --muted: #95a0ab; --line: #2f363d;
+  --accent: #e9a03b; --accent-ink: #1b1305; --sel: #5aa6f0; --bad: #ef6a5f; --good: #5cc282; --viewport: #20262c;
+  color-scheme: dark }
+
+html, body { height: 100%; }
+body { background: var(--bg); color: var(--ink); font-family: var(--f-body); font-size: 13px; }
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+button, input, select { font: inherit; color: inherit; }
+.app { height: 100%; display: grid; grid-template-rows: auto 1fr; padding-left: max(0px, env(safe-area-inset-left, 0px)); padding-right: max(0px, env(safe-area-inset-right, 0px)); }
+header { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding-block: 8px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); border-bottom: 1px solid var(--line); background: var(--panel); }
+header h1 { font-family: var(--f-display); font-size: 17px; letter-spacing: .02em; margin: 0 12px 0 0; white-space: nowrap; }
+header h1 span { color: var(--accent); }
+.tg { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
+.tg + .tg { padding-left: 8px; border-left: 1px solid var(--line); }
+.btn { border: 1px solid var(--line); background: var(--bg); border-radius: 4px; padding: 5px 9px; cursor: pointer; white-space: nowrap; }
+.btn:hover { border-color: var(--muted); }
+.btn:focus-visible, input:focus-visible, select:focus-visible, .lib-item:focus-visible { outline: 2px solid var(--sel); outline-offset: 1px; }
+.btn.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 600; }
+.btn.on { border-color: var(--sel); color: var(--sel); font-weight: 600; }
+label.inl { display: flex; align-items: center; gap: 4px; color: var(--muted); }
+select, input[type=text], input[type=number] { border: 1px solid var(--line); background: var(--bg); border-radius: 4px; padding: 4px 6px; min-width: 0; }
+input[type=number] { font-family: var(--f-mono); font-variant-numeric: tabular-nums; }
+
+main { display: grid; grid-template-columns: 250px 1fr 300px; min-height: 0; }
+aside { background: var(--panel); min-height: 0; overflow: auto; display: flex; flex-direction: column; }
+aside.left { border-right: 1px solid var(--line); }
+aside.right { border-left: 1px solid var(--line); }
+section.pane { padding: 12px 14px; border-bottom: 1px solid var(--line); display: flex; flex-direction: column; gap: 8px; }
+h2 { font-family: var(--f-display); font-size: 12px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); margin: 0; display: flex; justify-content: space-between; align-items: baseline; }
+h2 small { font-family: var(--f-mono); text-transform: none; letter-spacing: 0; font-weight: 400; }
+.hint { color: var(--muted); font-size: 12px; line-height: 1.45; margin: 0; }
+.lib-cat { font-family: var(--f-display); font-size: 12px; color: var(--muted); margin-top: 6px; text-transform: uppercase; letter-spacing: .06em; }
+.lib-item { display: flex; justify-content: space-between; gap: 6px; padding: 5px 7px; border-radius: 4px; cursor: pointer; border: 1px solid transparent; }
+.lib-item:hover { background: var(--bg); }
+.lib-item.armed { border-color: var(--accent); background: var(--bg); }
+.lib-item .nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.lib-item .tag { color: var(--muted); font-size: 11px; font-family: var(--f-mono); flex: none; }
+
+.stage { position: relative; min-height: 0; min-width: 0; background: var(--viewport); }
+.stage canvas { display: block; }
+#labels { position: absolute; inset: 0; pointer-events: none; }
+.lbl { font-family: var(--f-mono); font-size: 11px; background: var(--panel); color: var(--ink); border: 1px solid var(--line); padding: 1px 5px; border-radius: 3px; white-space: nowrap; }
+.lbl.bad { border-color: var(--bad); color: var(--bad); }
+.hud { position: absolute; left: 10px; bottom: 10px; display: flex; gap: 6px; flex-wrap: wrap; pointer-events: none; }
+.chip { font-family: var(--f-mono); font-size: 11px; padding: 3px 7px; border-radius: 10px; background: var(--panel); border: 1px solid var(--line); }
+.chip.warn { color: var(--bad); border-color: var(--bad); }
+.chip.ok { color: var(--good); border-color: var(--good); }
+.chip.arm { color: var(--accent); border-color: var(--accent); }
+.drop { position: absolute; inset: 0; display: grid; place-items: center; background: color-mix(in srgb, var(--accent) 18%, transparent); border: 2px dashed var(--accent); font-family: var(--f-display); font-size: 18px; pointer-events: none; }
+
+.grid2 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
+.fld { display: flex; flex-direction: column; gap: 2px; color: var(--muted); font-size: 11px; }
+.fld input, .fld select { color: var(--ink); width: 100%; }
+.row { display: flex; gap: 6px; flex-wrap: wrap; }
+table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+td, th { text-align: left; padding: 3px 4px; border-bottom: 1px solid var(--line); vertical-align: top; }
+th { color: var(--muted); font-weight: 500; font-size: 11px; }
+td.n { text-align: right; font-family: var(--f-mono); width: 3em; }
+td.cat { color: var(--muted); font-size: 11px; }
+.coll { color: var(--bad); }
+.modal { position: fixed; inset: 0; z-index: 15; background: color-mix(in srgb, var(--ink) 40%, transparent); display: grid; place-items: center; padding: 16px; }
+.sheet { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; width: min(980px, 100%); max-height: 100%; overflow: auto; padding: 16px max(16px, env(safe-area-inset-left, 0px)); display: flex; flex-direction: column; gap: 12px; }
+.sheet h2 { font-size: 14px; color: var(--ink); }
+.plates { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; }
+.plate { border: 1px solid var(--line); border-radius: 4px; padding: 8px; display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.plate canvas { width: 100%; height: auto; background: var(--bg); border-radius: 3px; }
+.plate .meta { display: flex; justify-content: space-between; gap: 6px; font-family: var(--f-mono); font-size: 11px; color: var(--muted); }
+.toast { position: fixed; right: max(16px, env(safe-area-inset-right, 0px)); bottom: calc(16px + env(safe-area-inset-bottom, 0px)); background: var(--ink); color: var(--bg); padding: 8px 12px; border-radius: 4px; font-size: 12px; z-index: 20; max-width: 80vw; }
+
+@media (max-width: 900px) {
+  html, body { height: auto; }
+  .app { height: auto; }
+  main { grid-template-columns: 1fr; }
+  .stage { height: 60vh; order: -1; }
+  aside.left, aside.right { border: 0; border-top: 1px solid var(--line); max-height: none; }
+}
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+
+<div class="app">
+  <header>
+    <h1>Multiboard <span>Designer</span></h1>
+    <div class="tg">
+      <button class="btn primary" id="btnOpen" title="Pick the folder where your Multiboard STL files are">Open parts folder</button>
+      <input type="file" id="dirInput" webkitdirectory multiple hidden>
+      <input type="file" id="fileInput" accept=".stl" multiple hidden>
+      <button class="btn" id="btnFiles">Add STL files</button>
+    </div>
+    <div class="tg">
+      <button class="btn" id="btnBox" title="Add a box to stand in for a real component">+ Box</button>
+      <button class="btn" id="btnCyl">+ Cylinder</button>
+      <select id="preset" aria-label="Component presets">
+        <option value="">+ Component preset…</option>
+        <option value="minipc">Mini PC 117×112×51</option>
+        <option value="nuc">NUC-style 117×112×38</option>
+        <option value="fan120">120 mm fan</option>
+        <option value="fan80">80 mm fan</option>
+        <option value="psu">Power brick 150×65×35</option>
+        <option value="switch">5-port switch 100×70×25</option>
+      </select>
+    </div>
+    <div class="tg">
+      <button class="btn on" id="mMove" title="Move (G)">Move</button>
+      <button class="btn" id="mRot" title="Rotate (R)">Rotate</button>
+      <label class="inl">Snap
+        <select id="snap"><option value="25">25 mm</option><option value="12.5" selected>12.5 mm</option><option value="5">5 mm</option><option value="1">1 mm</option><option value="0">off</option></select>
+      </label>
+      <label class="inl">Turn
+        <select id="rsnap"><option value="90" selected>90°</option><option value="45">45°</option><option value="15">15°</option><option value="0">free</option></select>
+      </label>
+    </div>
+    <div class="tg">
+      <button class="btn" id="btnSave">Save project</button>
+      <button class="btn" id="btnLoad">Open project</button>
+      <input type="file" id="projInput" accept=".json" hidden>
+      <button class="btn" id="btnNew">New</button>
+    </div>
+    <div class="tg">
+      <button class="btn primary" id="btnPlates">Print plates</button>
+    </div>
+  </header>
+
+  <main>
+    <aside class="left">
+      <section class="pane">
+        <h2>Part library <small id="libCount">0 files</small></h2>
+        <input type="text" id="libSearch" placeholder="Search parts" aria-label="Search parts">
+        <p class="hint" id="libHint">Open the folder with your downloaded Multiboard STLs. Files stay on your computer; nothing is uploaded. Click a part, then click a board face to snap it on. Esc cancels.</p>
+      </section>
+      <section class="pane" style="border:0">
+        <div id="lib"></div>
+      </section>
+    </aside>
+
+    <div class="stage" id="stage">
+      <div id="labels"></div>
+      <div class="hud" id="hud"></div>
+      <div class="drop" id="drop" hidden>Drop STL files to add them to the library</div>
+    </div>
+
+    <aside class="right">
+      <section class="pane" id="inspector">
+        <h2>Selected</h2>
+        <p class="hint">Click an object to select it. G moves, R rotates, Del deletes, Ctrl+D duplicates.</p>
+      </section>
+      <section class="pane">
+        <h2>Collisions <small id="collCount"></small></h2>
+        <label class="inl"><input type="checkbox" id="ignoreMounted" checked> Ignore parts snapped onto each other</label>
+        <div id="collList" class="hint">None</div>
+      </section>
+      <section class="pane">
+        <h2>Parts list <small id="bomCount"></small></h2>
+        <div id="bom"></div>
+        <div class="row">
+          <button class="btn" id="btnCsv">Download CSV</button>
+          <button class="btn" id="btnCopy">Copy</button>
+        </div>
+      </section>
+      <section class="pane">
+        <h2>Snap settings per part</h2>
+        <p class="hint">Mount face and grid offset you set on a part are remembered for that file. Download them to keep a snap data file for your library.</p>
+        <div class="row"><button class="btn" id="btnMeta">Download snap data</button><button class="btn" id="btnMetaLoad">Load snap data</button></div>
+        <input type="file" id="metaInput" accept=".json" hidden>
+      </section>
+    </aside>
+  </main>
+</div>
+
+<div class="modal" id="platesModal" hidden>
+  <div class="sheet" role="dialog" aria-labelledby="platesTitle">
+    <h2 id="platesTitle">Print plates <small id="platesSummary"></small></h2>
+    <div class="row">
+      <label class="inl">Printer
+        <select id="printer">
+          <option value="305x320" selected>Bambu H2C, one nozzle (305 × 320 mm)</option>
+          <option value="300x320">Bambu H2C, both nozzles (300 × 320 mm)</option>
+          <option value="256x256">Bambu X1 / P1 (256 × 256 mm)</option>
+          <option value="custom">Custom size</option>
+        </select>
+      </label>
+      <label class="inl">W <input type="number" id="plateW" value="305" style="width:5em"></label>
+      <label class="inl">D <input type="number" id="plateD" value="320" style="width:5em"></label>
+      <label class="inl">Gap mm <input type="number" id="plateGap" value="5" style="width:4em"></label>
+      <button class="btn" id="platesClose" style="margin-left:auto">Close</button>
+    </div>
+    <p class="hint">Parts keep the print orientation from their STL file and are packed onto as few plates as possible. Each plate exports as a .3mf you open in Bambu Studio to slice and send to the printer. Stand-in tiles and mock components are left off.</p>
+    <div class="plates" id="plates"></div>
+  </div>
+</div>
+
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/",
+  "three-mesh-bvh": "https://cdn.jsdelivr.net/npm/three-mesh-bvh@0.8.3/build/index.module.js"
+} }
+</script>
+<script type="module">
+import * as THREE from "three";
+import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+import { TransformControls } from "three/addons/controls/TransformControls.js";
+import { STLLoader } from "three/addons/loaders/STLLoader.js";
+import { CSS2DRenderer, CSS2DObject } from "three/addons/renderers/CSS2DRenderer.js";
+import { computeBoundsTree, disposeBoundsTree, acceleratedRaycast } from "three-mesh-bvh";
+
+THREE.BufferGeometry.prototype.computeBoundsTree = computeBoundsTree;
+THREE.BufferGeometry.prototype.disposeBoundsTree = disposeBoundsTree;
+THREE.Mesh.prototype.raycast = acceleratedRaycast;
+
+// ---------- Multiboard constants ----------
+const PITCH = 25;          // mm between multiholes (official part descriptions)
+const HALF = PITCH / 2;    // pegboard holes sit between multiholes
+const STANDIN_T = 6.4;     // stand-in tile thickness, approximate
+
+const $ = (id) => document.getElementById(id);
+const store = {
+  get(k, d) { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; } catch { return d; } },
+  set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} },
+};
+function toast(msg) {
+  const t = document.createElement("div"); t.className = "toast"; t.textContent = msg;
+  document.body.appendChild(t); setTimeout(() => t.remove(), 3200);
+}
+function css(name) { return getComputedStyle(document.documentElement).getPropertyValue(name).trim(); }
+
+// ---------- categories ----------
+const CATS = [
+  ["Tiles & plates", /tile|plate|board|octagon|grid/i],
+  ["Snaps", /snap/i],
+  ["Pins & clips", /pin|clip|push.?fit|lock/i],
+  ["Bolts, threads & nuts", /bolt|thread|screw|nut|washer/i],
+  ["Hooks & pegs", /hook|peg/i],
+  ["Shelves, trays & bins", /shelf|tray|bin|drawer|basket|cup/i],
+  ["Brackets, beams & rails", /bracket|beam|rail|bar|arm|mount/i],
+  ["Cable management", /cable|wire|cord/i],
+];
+const CONNECTOR_CATS = new Set(["Snaps", "Pins & clips", "Bolts, threads & nuts"]);
+function categorize(path) {
+  for (const [c, re] of CATS) if (re.test(path)) return c;
+  return "Other";
+}
+function prettyName(path) {
+  return path.split("/").pop().replace(/\.stl$/i, "").replace(/[_]+/g, " ").trim();
+}
+
+// ---------- library ----------
+const library = new Map(); // key -> {key, path, name, cat, file, geom}
+let meta = store.get("mbd.meta", {}); // key -> {mount, ox, oy, cat}
+let armedKey = null;
+const loader = new STLLoader();
+
+function libKey(path) { return path.split("/").pop().toLowerCase(); }
+function addFiles(files) {
+  let n = 0;
+  for (const f of files) {
+    if (!/\.stl$/i.test(f.name)) continue;
+    const path = (f.webkitRelativePath || f.name).replace(/\\/g, "/");
+    const key = libKey(path);
+    const cur = library.get(key);
+    if (cur && cur.file) continue;
+    library.set(key, { key, path, name: prettyName(path), cat: meta[key]?.cat || categorize(path), file: f, geom: cur?.geom || null });
+    n++;
+  }
+  renderLibrary();
+  relinkMissing();
+  if (n) toast(`Added ${n} part file${n === 1 ? "" : "s"} to the library`);
+  else toast("No .stl files found there");
+}
+async function getGeometry(key) {
+  const item = library.get(key);
+  if (!item) return null;
+  if (item.geom) return item.geom;
+  if (!item.file) return null;
+  const buf = await item.file.arrayBuffer();
+  const g = loader.parse(buf);
+  g.rotateX(-Math.PI / 2);   // STL is Z-up, the bench is Y-up
+  g.computeBoundingBox();
+  const c = new THREE.Vector3(); g.boundingBox.getCenter(c);
+  g.translate(-c.x, -c.y, -c.z);
+  g.computeVertexNormals();
+  g.computeBoundingBox();
+  g.computeBoundsTree();
+  item.geom = g;
+  return g;
+}
+function renderLibrary() {
+  const q = $("libSearch").value.trim().toLowerCase();
+  const el = $("lib"); el.innerHTML = "";
+  const items = [...library.values()].filter(i => i.file || i.geom).filter(i => !q || i.path.toLowerCase().includes(q));
+  $("libCount").textContent = `${library.size ? [...library.values()].filter(i => i.file || i.geom).length : 0} files`;
+  const groups = {};
+  for (const i of items) (groups[i.cat] ||= []).push(i);
+  const order = [...CATS.map(c => c[0]), "Stand-ins", "Other"];
+  for (const cat of order) {
+    if (!groups[cat]) continue;
+    const h = document.createElement("div"); h.className = "lib-cat"; h.textContent = `${cat} · ${groups[cat].length}`;
+    el.appendChild(h);
+    for (const i of groups[cat].sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }))) {
+      const d = document.createElement("div");
+      d.className = "lib-item" + (armedKey === i.key ? " armed" : "");
+      d.tabIndex = 0; d.title = i.path;
+      d.innerHTML = `<span class="nm"></span><span class="tag"></span>`;
+      d.querySelector(".nm").textContent = i.name;
+      d.querySelector(".tag").textContent = i.standin ? "stand-in" : "";
+      const go = () => arm(i.key);
+      d.onclick = go; d.onkeydown = (e) => { if (e.key === "Enter") go(); };
+      el.appendChild(d);
+    }
+  }
+}
+$("libSearch").oninput = renderLibrary;
+
+// Stand-in tiles so the bench works before any files are loaded. Not official geometry.
+function standinTile(n) {
+  const s = n * PITCH;
+  const shape = new THREE.Shape();
+  shape.moveTo(-s / 2, -s / 2); shape.lineTo(s / 2, -s / 2); shape.lineTo(s / 2, s / 2); shape.lineTo(-s / 2, s / 2); shape.closePath();
+  const r = 7.5, k = Math.tan(Math.PI / 8) * r;
+  for (let i = 0; i < n; i++) for (let j = 0; j < n; j++) {
+    const cx = -s / 2 + HALF + i * PITCH, cy = -s / 2 + HALF + j * PITCH;
+    const h = new THREE.Path();
+    const pts = [[r, k], [k, r], [-k, r], [-r, k], [-r, -k], [-k, -r], [k, -r], [r, -k]];
+    h.moveTo(cx + pts[0][0], cy + pts[0][1]);
+    for (let p = 7; p >= 1; p--) h.lineTo(cx + pts[p][0], cy + pts[p][1]);
+    h.closePath(); shape.holes.push(h);
+  }
+  for (let i = 1; i < n; i++) for (let j = 1; j < n; j++) {
+    const h = new THREE.Path(); h.absarc(-s / 2 + i * PITCH, -s / 2 + j * PITCH, 3, 0, Math.PI * 2, true); shape.holes.push(h);
+  }
+  const g = new THREE.ExtrudeGeometry(shape, { depth: STANDIN_T, bevelEnabled: false, curveSegments: 10 });
+  g.rotateX(-Math.PI / 2);
+  g.computeBoundingBox(); const c = new THREE.Vector3(); g.boundingBox.getCenter(c); g.translate(-c.x, -c.y, -c.z);
+  g.computeVertexNormals(); g.computeBoundingBox(); g.computeBoundsTree();
+  return g;
+}
+for (const n of [2, 4, 6]) {
+  const key = `standin-${n}x${n}-tile`;
+  library.set(key, { key, path: key, name: `${n}×${n} tile (stand-in)`, cat: "Stand-ins", standin: true, file: null, geom: standinTile(n), gridDefault: { ox: HALF, oy: HALF } });
+}
+
+// ---------- scene ----------
+const stage = $("stage");
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+stage.prepend(renderer.domElement);
+const labelR = new CSS2DRenderer({ element: $("labels") });
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(40, 1, 1, 20000);
+camera.position.set(250, 210, 300);
+const orbit = new OrbitControls(camera, renderer.domElement);
+orbit.target.set(0, 50, 0); orbit.enableDamping = true;
+scene.add(new THREE.HemisphereLight(0xffffff, 0x8090a0, 1.6));
+const sun = new THREE.DirectionalLight(0xffffff, 1.6); sun.position.set(300, 600, 400); scene.add(sun);
+const grid = new THREE.GridHelper(2000, 80); scene.add(grid);
+const fine = new THREE.GridHelper(2000, 160); fine.material.transparent = true; fine.material.opacity = .25; scene.add(fine);
+function applyTheme() {
+  scene.background = new THREE.Color(css("--viewport"));
+  const dark = matchMedia("(prefers-color-scheme: dark)").matches && document.documentElement.dataset.theme !== "light" || document.documentElement.dataset.theme === "dark";
+  grid.material.color.set(dark ? 0x46505a : 0xa9b2bc); fine.material.color.set(dark ? 0x323a42 : 0xc3cad1);
+}
+applyTheme();
+matchMedia("(prefers-color-scheme: dark)").addEventListener("change", applyTheme);
+new MutationObserver(applyTheme).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+
+const tc = new TransformControls(camera, renderer.domElement);
+scene.add(tc.getHelper());
+tc.addEventListener("dragging-changed", (e) => { orbit.enabled = !e.value; if (!e.value) { syncFromMesh(selected); scheduleCheck(); renderInspector(); persist(); } });
+tc.addEventListener("objectChange", () => { if (selected) updateLabelPos(selected); });
+
+function resize() {
+  const r = stage.getBoundingClientRect();
+  renderer.setSize(r.width, r.height); labelR.setSize(r.width, r.height);
+  camera.aspect = r.width / Math.max(1, r.height); camera.updateProjectionMatrix();
+}
+new ResizeObserver(resize).observe(stage);
+
+// ---------- objects ----------
+// obj: {id, kind:'part'|'box'|'cyl', key?, name, label, dims:[x,y,z], color, pos:[], rot:[], mountedOn, mesh}
+let objects = [];
+let selected = null;
+let nextId = 1;
+const PART_COLOR = 0x8e99a6, MOCK_COLORS = ["#4f7fb8", "#5f9d6b", "#a8644c", "#7a6aa8", "#9a8a3a"];
+
+function materialFor(o) {
+  const color = o.kind === "part" ? (o.color || "#8e99a6") : (o.color || "#4f7fb8");
+  return new THREE.MeshStandardMaterial({ color, roughness: .7, metalness: .05, transparent: o.kind !== "part", opacity: o.kind !== "part" ? .82 : 1 });
+}
+async function buildMesh(o) {
+  let g;
+  if (o.kind === "part") {
+    g = await getGeometry(o.key);
+    if (!g) { g = new THREE.BoxGeometry(25, 25, 25); o.missing = true; } else o.missing = false;
+  } else if (o.kind === "box") g = new THREE.BoxGeometry(...o.dims);
+  else g = new THREE.CylinderGeometry(o.dims[0] / 2, o.dims[0] / 2, o.dims[1], 40);
+  if (!g.boundsTree) { g.computeBoundingBox(); g.computeBoundsTree(); }
+  const m = new THREE.Mesh(g, materialFor(o));
+  if (o.missing) { m.material.wireframe = true; }
+  m.userData.obj = o;
+  m.position.fromArray(o.pos); m.quaternion.fromArray(o.rot);
+  if (o.mesh) { scene.remove(o.mesh); if (o.labelObj) o.mesh.remove(o.labelObj); }
+  o.mesh = m; scene.add(m);
+  attachLabel(o);
+  return m;
+}
+function attachLabel(o) {
+  if (o.labelObj) { o.labelObj.removeFromParent(); o.labelObj.element.remove(); o.labelObj = null; }
+  const text = o.label || (o.kind === "part" ? "" : o.name);
+  if (!text && !o.missing) return;
+  const div = document.createElement("div"); div.className = "lbl"; div.textContent = o.missing ? `${text || o.name} (file not loaded)` : text;
+  const lo = new CSS2DObject(div); o.labelObj = lo; o.mesh.add(lo); updateLabelPos(o);
+}
+function updateLabelPos(o) {
+  if (!o?.labelObj) return;
+  const bb = o.mesh.geometry.boundingBox;
+  o.labelObj.position.set(0, bb.max.y + 6, 0);
+}
+function syncFromMesh(o) {
+  if (!o) return;
+  o.pos = o.mesh.position.toArray().map(v => +v.toFixed(3));
+  o.rot = o.mesh.quaternion.toArray();
+}
+async function addObject(o) {
+  o.id = o.id || nextId++;
+  nextId = Math.max(nextId, o.id + 1);
+  o.pos ||= [0, 0, 0]; o.rot ||= [0, 0, 0, 1];
+  objects.push(o);
+  await buildMesh(o);
+  return o;
+}
+function select(o) {
+  selected = o;
+  for (const x of objects) if (x.mesh) x.mesh.material.emissive?.set(x === o ? 0x1d4f86 : 0x000000);
+  if (o) tc.attach(o.mesh); else tc.detach();
+  markCollisions();
+  renderInspector();
+}
+function removeObject(o) {
+  if (!o) return;
+  if (selected === o) select(null);
+  if (o.labelObj) o.labelObj.element.remove();
+  scene.remove(o.mesh);
+  objects = objects.filter(x => x !== o);
+  for (const x of objects) if (x.mountedOn === o.id) x.mountedOn = null;
+  afterChange();
+}
+async function duplicate(o) {
+  if (!o) return;
+  const c = JSON.parse(JSON.stringify({ ...o, mesh: undefined, labelObj: undefined, id: undefined }));
+  c.pos = [o.pos[0] + PITCH, o.pos[1], o.pos[2] + PITCH];
+  const n = await addObject(c); select(n); afterChange();
+}
+
+// ---------- mock components ----------
+async function addMock(kind, dims, name, color) {
+  const o = { kind, dims, name, label: name, color: color || MOCK_COLORS[objects.filter(x => x.kind !== "part").length % MOCK_COLORS.length] };
+  const h = kind === "box" ? dims[1] : dims[1];
+  o.pos = [0, h / 2, 0];
+  const n = await addObject(o);
+  select(n); afterChange();
+}
+const PRESETS = {
+  minipc: ["box", [117, 51, 112], "Mini PC"],
+  nuc: ["box", [117, 38, 112], "NUC"],
+  fan120: ["box", [120, 120, 25], "120 mm fan"],
+  fan80: ["box", [80, 80, 25], "80 mm fan"],
+  psu: ["box", [150, 35, 65], "Power brick"],
+  switch: ["box", [100, 25, 70], "Network switch"],
+};
+$("btnBox").onclick = () => addMock("box", [100, 40, 100], "Box");
+$("btnCyl").onclick = () => addMock("cyl", [40, 60, 40], "Cylinder");
+$("preset").onchange = (e) => { const p = PRESETS[e.target.value]; e.target.value = ""; if (p) addMock(p[0], [...p[1]], p[2]); };
+
+// ---------- placement with snapping ----------
+const ray = new THREE.Raycaster();
+const ndc = new THREE.Vector2();
+let ghost = null, ghostInfo = null, spin = 0;
+const AXES = { "-y": [0, -1, 0], "+y": [0, 1, 0], "-z": [0, 0, -1], "+z": [0, 0, 1], "-x": [-1, 0, 0], "+x": [1, 0, 0] };
+function partMeta(key) {
+  const item = library.get(key);
+  const d = item?.gridDefault || { ox: HALF, oy: HALF };
+  return { mount: "-y", ox: d.ox, oy: d.oy, ...(meta[key] || {}) };
+}
+function snapStep() { return parseFloat($("snap").value) || 0; }
+function snapVal(v, origin, step) { return step ? origin + Math.round((v - origin) / step) * step : v; }
+
+async function arm(key) {
+  armedKey = armedKey === key ? null : key;
+  renderLibrary();
+  if (ghost) { scene.remove(ghost); ghost = null; }
+  if (!armedKey) { renderHud(); return; }
+  const g = await getGeometry(armedKey);
+  if (!g) { toast("That file is not loaded. Open your parts folder first."); armedKey = null; renderLibrary(); return; }
+  ghost = new THREE.Mesh(g, new THREE.MeshStandardMaterial({ color: css("--accent") || "#c27c0e", transparent: true, opacity: .55, depthWrite: false }));
+  ghost.raycast = () => {};
+  ghost.visible = false; scene.add(ghost); spin = 0;
+  renderHud();
+}
+function disarm() { armedKey = null; if (ghost) scene.remove(ghost); ghost = null; ghostInfo = null; renderLibrary(); renderHud(); }
+
+// Find where the ghost goes for a pointer position: on a face of an existing object (grid-snapped in that object's
+// local frame), or on the floor (grid-snapped in world).
+function computePlacement(ev) {
+  const r = renderer.domElement.getBoundingClientRect();
+  ndc.set(((ev.clientX - r.left) / r.width) * 2 - 1, -((ev.clientY - r.top) / r.height) * 2 + 1);
+  ray.setFromCamera(ndc, camera);
+  const hits = ray.intersectObjects(objects.map(o => o.mesh), false);
+  const step = snapStep();
+  const m = partMeta(armedKey);
+  const mountDir = new THREE.Vector3(...AXES[m.mount]);
+  const g = ghost.geometry; const half = new THREE.Vector3(); g.boundingBox.getSize(half).multiplyScalar(.5);
+  let point, normal, target = null;
+  if (hits.length) {
+    const h = hits[0]; target = h.object.userData.obj;
+    const inv = h.object.matrixWorld.clone().invert();
+    const lp = h.point.clone().applyMatrix4(inv);
+    const ln = h.face.normal.clone();
+    // snap to the dominant axis plane of the hit face
+    const ax = Math.abs(ln.x) > Math.abs(ln.y) ? (Math.abs(ln.x) > Math.abs(ln.z) ? "x" : "z") : (Math.abs(ln.y) > Math.abs(ln.z) ? "y" : "z");
+    const tb = h.object.geometry.boundingBox;
+    const tm = target.kind === "part" ? partMeta(target.key) : { ox: 0, oy: 0 };
+    const [u, v] = ax === "y" ? ["x", "z"] : ax === "x" ? ["z", "y"] : ["x", "y"];
+    const ou = target.kind === "part" ? tb.min[u] + tm.ox : 0, ov = target.kind === "part" ? tb.min[v] + tm.oy : 0;
+    lp[u] = snapVal(lp[u], ou, step); lp[v] = snapVal(lp[v], ov, step);
+    lp[ax] = ln[ax] > 0 ? tb.max[ax] : tb.min[ax];
+    ln.set(0, 0, 0); ln[ax] = Math.sign(h.face.normal[ax]) || 1;
+    point = lp.applyMatrix4(h.object.matrixWorld);
+    normal = ln.transformDirection(h.object.matrixWorld);
+  } else {
+    const plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+    point = new THREE.Vector3();
+    if (!ray.ray.intersectPlane(plane, point)) return null;
+    point.x = snapVal(point.x, 0, step); point.z = snapVal(point.z, 0, step);
+    normal = new THREE.Vector3(0, 1, 0);
+  }
+  // orient: part's mount face points into the surface, then apply the user's spin about the normal
+  const q = new THREE.Quaternion().setFromUnitVectors(mountDir, normal.clone().negate());
+  q.premultiply(new THREE.Quaternion().setFromAxisAngle(normal, spin));
+  const offset = mountDir.clone().multiply(half).applyQuaternion(q);
+  const pos = point.clone().sub(offset);
+  return { pos, q, target };
+}
+renderer.domElement.addEventListener("pointermove", (ev) => {
+  if (!ghost) return;
+  ghostInfo = computePlacement(ev);
+  ghost.visible = !!ghostInfo;
+  if (ghostInfo) { ghost.position.copy(ghostInfo.pos); ghost.quaternion.copy(ghostInfo.q); }
+});
+let downAt = null;
+renderer.domElement.addEventListener("pointerdown", (ev) => { downAt = [ev.clientX, ev.clientY]; });
+renderer.domElement.addEventListener("pointerup", async (ev) => {
+  if (!downAt || Math.hypot(ev.clientX - downAt[0], ev.clientY - downAt[1]) > 5) return;
+  if (tc.dragging) return;
+  if (ghost) {
+    ghostInfo = computePlacement(ev);
+    if (!ghostInfo) return;
+    const item = library.get(armedKey);
+    const o = await addObject({ kind: "part", key: armedKey, name: item.name, cat: item.cat, pos: ghostInfo.pos.toArray(), rot: ghostInfo.q.toArray(), mountedOn: ghostInfo.target?.id || null });
+    afterChange();
+    if (!ev.shiftKey) { disarm(); select(o); }
+    return;
+  }
+  const r = renderer.domElement.getBoundingClientRect();
+  ndc.set(((ev.clientX - r.left) / r.width) * 2 - 1, -((ev.clientY - r.top) / r.height) * 2 + 1);
+  ray.setFromCamera(ndc, camera);
+  const hit = ray.intersectObjects(objects.map(o => o.mesh), false)[0];
+  select(hit ? hit.object.userData.obj : null);
+});
+
+// ---------- modes & keys ----------
+function setMode(m) {
+  tc.setMode(m); $("mMove").classList.toggle("on", m === "translate"); $("mRot").classList.toggle("on", m === "rotate");
+}
+$("mMove").onclick = () => setMode("translate");
+$("mRot").onclick = () => setMode("rotate");
+function applySnap() {
+  const s = snapStep(); tc.setTranslationSnap(s || null);
+  const r = parseFloat($("rsnap").value); tc.setRotationSnap(r ? THREE.MathUtils.degToRad(r) : null);
+}
+$("snap").onchange = applySnap; $("rsnap").onchange = applySnap; applySnap();
+window.addEventListener("keydown", (e) => {
+  if (e.target.matches("input, select, textarea")) return;
+  if (e.key === "Escape") { if (!$("platesModal").hidden) { $("platesModal").hidden = true; return; } disarm(); select(null); }
+  else if (e.key === "g" || e.key === "G") setMode("translate");
+  else if (e.key === "r" || e.key === "R") {
+    if (ghost) { spin += Math.PI / 2; renderHud(); } else setMode("rotate");
+  }
+  else if (e.key === "Delete" || e.key === "Backspace") removeObject(selected);
+  else if ((e.ctrlKey || e.metaKey) && (e.key === "d" || e.key === "D")) { e.preventDefault(); duplicate(selected); }
+});
+
+// ---------- collisions ----------
+let collisions = [];
+let checkTimer = null;
+function scheduleCheck() { clearTimeout(checkTimer); checkTimer = setTimeout(checkCollisions, 120); }
+const _m = new THREE.Matrix4(), _ba = new THREE.Box3(), _bb = new THREE.Box3();
+function checkCollisions() {
+  const ignore = $("ignoreMounted").checked;
+  collisions = [];
+  const list = objects.filter(o => o.mesh && !o.missing);
+  for (const o of list) o.mesh.updateMatrixWorld();
+  for (let i = 0; i < list.length; i++) for (let j = i + 1; j < list.length; j++) {
+    const a = list[i], b = list[j];
+    if (ignore && (a.mountedOn === b.id || b.mountedOn === a.id)) continue;
+    _ba.copy(a.mesh.geometry.boundingBox).applyMatrix4(a.mesh.matrixWorld).expandByScalar(-0.05);
+    _bb.copy(b.mesh.geometry.boundingBox).applyMatrix4(b.mesh.matrixWorld).expandByScalar(-0.05);
+    if (!_ba.intersectsBox(_bb)) continue;
+    _m.copy(a.mesh.matrixWorld).invert().multiply(b.mesh.matrixWorld);
+    let hit = false;
+    try { hit = a.mesh.geometry.boundsTree.intersectsGeometry(b.mesh.geometry, _m); } catch { hit = true; }
+    // a mock component fully inside another counts too
+    if (!hit && (a.kind !== "part" || b.kind !== "part")) {
+      const ca = new THREE.Box3().copy(a.mesh.geometry.boundingBox).applyMatrix4(a.mesh.matrixWorld);
+      const cb = new THREE.Box3().copy(b.mesh.geometry.boundingBox).applyMatrix4(b.mesh.matrixWorld);
+      hit = ca.containsBox(cb) || cb.containsBox(ca);
+    }
+    if (hit) collisions.push([a, b]);
+  }
+  markCollisions(); renderCollisions(); renderHud();
+}
+$("ignoreMounted").onchange = checkCollisions;
+function markCollisions() {
+  const bad = new Set(collisions.flat());
+  for (const o of objects) {
+    if (!o.mesh) continue;
+    const base = o.color || (o.kind === "part" ? "#8e99a6" : "#4f7fb8");
+    o.mesh.material.color.set(bad.has(o) ? (css("--bad") || "#c8372d") : base);
+    if (o.labelObj) o.labelObj.element.classList.toggle("bad", bad.has(o));
+  }
+}
+function renderCollisions() {
+  const el = $("collList");
+  $("collCount").textContent = collisions.length ? `${collisions.length}` : "";
+  if (!collisions.length) { el.className = "hint"; el.textContent = "None"; return; }
+  el.className = ""; el.innerHTML = "";
+  for (const [a, b] of collisions) {
+    const d = document.createElement("div"); d.className = "coll lib-item"; d.tabIndex = 0;
+    d.textContent = `${displayName(a)} overlaps ${displayName(b)}`;
+    d.onclick = () => select(a);
+    el.appendChild(d);
+  }
+}
+function displayName(o) { return o.label || o.name; }
+
+// ---------- inspector ----------
+function renderInspector() {
+  const el = $("inspector");
+  const o = selected;
+  if (!o) { el.innerHTML = `<h2>Selected</h2><p class="hint">Click an object to select it. G moves, R rotates, Del deletes, Ctrl+D duplicates. While placing a part, R turns it 90° and Shift+click keeps placing.</p>`; return; }
+  const e = new THREE.Euler().setFromQuaternion(o.mesh.quaternion, "XYZ");
+  const deg = [e.x, e.y, e.z].map(v => Math.round(THREE.MathUtils.radToDeg(v) * 10) / 10);
+  const bbs = new THREE.Vector3(); new THREE.Box3().copy(o.mesh.geometry.boundingBox).getSize(bbs);
+  const m = o.kind === "part" ? partMeta(o.key) : null;
+  el.innerHTML = `
+    <h2>Selected <small>${o.kind === "part" ? "printed part" : "stand-in shape"}</small></h2>
+    <div class="fld">Name<input type="text" id="iName"></div>
+    <div class="fld">Label shown in 3D<input type="text" id="iLabel" placeholder="none"></div>
+    <div class="grid2">
+      <div class="fld">X mm<input type="number" step="0.5" id="iX"></div>
+      <div class="fld">Y mm<input type="number" step="0.5" id="iY"></div>
+      <div class="fld">Z mm<input type="number" step="0.5" id="iZ"></div>
+      <div class="fld">Rot X°<input type="number" step="15" id="iRX"></div>
+      <div class="fld">Rot Y°<input type="number" step="15" id="iRY"></div>
+      <div class="fld">Rot Z°<input type="number" step="15" id="iRZ"></div>
+    </div>
+    ${o.kind !== "part" ? `<div class="grid2">
+      <div class="fld">${o.kind === "box" ? "Width" : "Diameter"} mm<input type="number" step="1" id="iDX"></div>
+      <div class="fld">Height mm<input type="number" step="1" id="iDY"></div>
+      ${o.kind === "box" ? `<div class="fld">Depth mm<input type="number" step="1" id="iDZ"></div>` : `<div></div>`}
+    </div>
+    <div class="fld">Color<input type="color" id="iColor"></div>` : `
+    <p class="hint">Size ${bbs.toArray().map(v => v.toFixed(1)).join(" × ")} mm${o.missing ? " · file not loaded" : ""}</p>
+    <div class="grid2">
+      <div class="fld">Mount face<select id="iMount">${Object.keys(AXES).map(k => `<option value="${k}">${k.toUpperCase()}</option>`).join("")}</select></div>
+      <div class="fld">Grid offset X<input type="number" step="0.25" id="iOX"></div>
+      <div class="fld">Grid offset Y<input type="number" step="0.25" id="iOY"></div>
+    </div>
+    <div class="fld">Category<select id="iCat">${[...CATS.map(c => c[0]), "Other"].map(c => `<option>${c}</option>`).join("")}</select></div>
+    <p class="hint">Mount face is the side that touches the board. Grid offset is the distance from the part's edge to its first hole; check it against a real print.</p>`}
+    <div class="row"><button class="btn" id="iDup">Duplicate</button><button class="btn" id="iDel">Delete</button></div>`;
+  $("iName").value = o.name; $("iLabel").value = o.label || "";
+  [$("iX").value, $("iY").value, $("iZ").value] = o.mesh.position.toArray().map(v => +v.toFixed(2));
+  [$("iRX").value, $("iRY").value, $("iRZ").value] = deg;
+  const commitT = () => {
+    o.mesh.position.set(+$("iX").value, +$("iY").value, +$("iZ").value);
+    o.mesh.quaternion.setFromEuler(new THREE.Euler(...[+$("iRX").value, +$("iRY").value, +$("iRZ").value].map(THREE.MathUtils.degToRad), "XYZ"));
+    syncFromMesh(o); afterChange(false);
+  };
+  for (const id of ["iX", "iY", "iZ", "iRX", "iRY", "iRZ"]) $(id).onchange = commitT;
+  $("iName").onchange = () => { o.name = $("iName").value; afterChange(); };
+  $("iLabel").onchange = () => { o.label = $("iLabel").value; attachLabel(o); afterChange(false); };
+  if (o.kind !== "part") {
+    $("iDX").value = o.dims[0]; $("iDY").value = o.dims[1]; if ($("iDZ")) $("iDZ").value = o.dims[2];
+    $("iColor").value = o.color;
+    const commitD = async () => {
+      o.dims = [+$("iDX").value || 1, +$("iDY").value || 1, $("iDZ") ? (+$("iDZ").value || 1) : +$("iDX").value || 1];
+      syncFromMesh(o); await buildMesh(o); tc.attach(o.mesh); select(o); afterChange(false);
+    };
+    for (const id of ["iDX", "iDY", "iDZ"]) if ($(id)) $(id).onchange = commitD;
+    $("iColor").oninput = () => { o.color = $("iColor").value; markCollisions(); persist(); };
+  } else {
+    $("iMount").value = m.mount; $("iOX").value = m.ox; $("iOY").value = m.oy; $("iCat").value = o.cat || library.get(o.key)?.cat || "Other";
+    const commitM = () => {
+      meta[o.key] = { ...(meta[o.key] || {}), mount: $("iMount").value, ox: +$("iOX").value, oy: +$("iOY").value, cat: $("iCat").value };
+      store.set("mbd.meta", meta);
+      const item = library.get(o.key); if (item) item.cat = $("iCat").value;
+      for (const x of objects) if (x.key === o.key) x.cat = $("iCat").value;
+      renderLibrary(); renderBom();
+    };
+    for (const id of ["iMount", "iOX", "iOY", "iCat"]) $(id).onchange = commitM;
+  }
+  $("iDup").onclick = () => duplicate(o);
+  $("iDel").onclick = () => removeObject(o);
+}
+
+// ---------- parts list ----------
+function bomRows() {
+  const map = new Map();
+  for (const o of objects) {
+    const printed = o.kind === "part";
+    const k = printed ? "p:" + o.key : "m:" + o.name + ":" + o.dims.join("x");
+    const cat = printed ? (o.cat || library.get(o.key)?.cat || "Other") : "Components (not printed)";
+    const r = map.get(k) || { name: printed ? o.name : `${o.name} (${o.dims.map(v => Math.round(v)).join("×")} mm)`, file: printed ? (library.get(o.key)?.path || o.key) : "", cat, qty: 0, printed, connector: CONNECTOR_CATS.has(cat) };
+    r.qty++; map.set(k, r);
+  }
+  const rank = (r) => r.printed ? (r.connector ? 1 : 0) : 2;
+  return [...map.values()].sort((a, b) => rank(a) - rank(b) || a.cat.localeCompare(b.cat) || a.name.localeCompare(b.name, undefined, { numeric: true }));
+}
+function renderBom() {
+  const rows = bomRows();
+  const printed = rows.filter(r => r.printed).reduce((s, r) => s + r.qty, 0);
+  $("bomCount").textContent = `${printed} to print`;
+  if (!rows.length) { $("bom").innerHTML = `<p class="hint">Add parts to see what to print.</p>`; return; }
+  let html = `<table><thead><tr><th>Part</th><th>Group</th><th style="text-align:right">Qty</th></tr></thead><tbody>`;
+  for (const r of rows) html += `<tr><td></td><td class="cat"></td><td class="n">${r.qty}</td></tr>`;
+  $("bom").innerHTML = html + "</tbody></table>";
+  const trs = $("bom").querySelectorAll("tbody tr");
+  rows.forEach((r, i) => { trs[i].children[0].textContent = r.name; trs[i].children[1].textContent = r.cat; });
+}
+function bomCsv() {
+  const q = (s) => `"${String(s).replace(/"/g, '""')}"`;
+  const lines = [["Part", "Group", "Type", "Qty", "File"].map(q).join(",")];
+  for (const r of bomRows()) lines.push([r.name, r.cat, r.printed ? (r.connector ? "Connector" : "Printed part") : "Component", r.qty, r.file].map(q).join(","));
+  return lines.join("\r\n");
+}
+async function offerFile(filename, data) {
+  let downloads = null;
+  try { downloads = await window.claude?.use?.("downloads"); } catch {}
+  if (downloads) {
+    try { await downloads.save({ filename, data }); toast(`Saved ${filename}`); return; }
+    catch (e) { if (e?.code === "declined") return; }
+  }
+  // outside claude.ai (opened as a local file) a normal download link works
+  try {
+    const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([data])); a.download = filename;
+    document.body.appendChild(a); a.click(); a.remove();
+  } catch { toast("Downloads are not available here. Use Copy instead."); }
+}
+$("btnCsv").onclick = () => offerFile("multiboard-parts-list.csv", bomCsv());
+$("btnCopy").onclick = async () => {
+  try { await navigator.clipboard.writeText(bomCsv()); toast("Parts list copied"); }
+  catch { toast("Copy was blocked by the browser"); }
+};
+
+// ---------- project save/load ----------
+function serialize() {
+  return { app: "multiboard-designer", version: 1, savedAt: new Date().toISOString(),
+    objects: objects.map(o => ({ id: o.id, kind: o.kind, key: o.key, name: o.name, label: o.label, cat: o.cat, dims: o.dims, color: o.color, pos: o.pos, rot: o.rot, mountedOn: o.mountedOn || null })),
+    partFiles: [...new Set(objects.filter(o => o.kind === "part").map(o => library.get(o.key)?.path || o.key))],
+  };
+}
+let persistTimer = null;
+function persist() { clearTimeout(persistTimer); persistTimer = setTimeout(() => store.set("mbd.project", serialize()), 300); }
+function afterChange(rerenderInspector = true) {
+  if (rerenderInspector) renderInspector();
+  renderBom(); scheduleCheck(); persist();
+}
+async function loadProject(p) {
+  for (const o of [...objects]) { scene.remove(o.mesh); o.labelObj?.element.remove(); }
+  objects = []; select(null);
+  for (const o of p.objects || []) await addObject({ ...o });
+  afterChange();
+  const missing = objects.filter(o => o.missing).length;
+  if (missing) toast(`${missing} part${missing === 1 ? "" : "s"} need their STL files. Open your parts folder to fill them in.`);
+}
+async function relinkMissing() {
+  let n = 0;
+  for (const o of objects) if (o.kind === "part" && o.missing && library.get(o.key)?.file) { syncFromMesh(o); await buildMesh(o); n++; }
+  if (n) { if (selected) tc.attach(selected.mesh); afterChange(); }
+}
+$("btnSave").onclick = () => offerFile("multiboard-project.json", JSON.stringify(serialize(), null, 2));
+$("btnLoad").onclick = () => $("projInput").click();
+$("projInput").onchange = async (e) => {
+  const f = e.target.files[0]; e.target.value = ""; if (!f) return;
+  try { await loadProject(JSON.parse(await f.text())); toast(`Opened ${f.name}`); } catch { toast("That file is not a Multiboard Designer project"); }
+};
+$("btnNew").onclick = () => loadProject({ objects: [] });
+
+$("btnMeta").onclick = () => offerFile("multiboard-snap-data.json", JSON.stringify(meta, null, 2));
+$("btnMetaLoad").onclick = () => $("metaInput").click();
+$("metaInput").onchange = async (e) => {
+  const f = e.target.files[0]; e.target.value = ""; if (!f) return;
+  try { meta = { ...meta, ...JSON.parse(await f.text()) }; store.set("mbd.meta", meta); for (const [k, v] of Object.entries(meta)) if (library.get(k) && v.cat) library.get(k).cat = v.cat; renderLibrary(); renderInspector(); toast("Snap data loaded"); }
+  catch { toast("That file is not snap data from this app"); }
+};
+
+// ---------- file inputs & drag/drop ----------
+$("btnOpen").onclick = () => $("dirInput").click();
+$("btnFiles").onclick = () => $("fileInput").click();
+$("dirInput").onchange = (e) => { addFiles([...e.target.files]); e.target.value = ""; };
+$("fileInput").onchange = (e) => { addFiles([...e.target.files]); e.target.value = ""; };
+stage.addEventListener("dragover", (e) => { e.preventDefault(); $("drop").hidden = false; });
+stage.addEventListener("dragleave", () => { $("drop").hidden = true; });
+stage.addEventListener("drop", (e) => { e.preventDefault(); $("drop").hidden = true; addFiles([...e.dataTransfer.files]); });
+
+// ---------- print plates ----------
+// Footprints use the STL's own frame (print orientation). Bench frame (x, y, z) maps back to STL (x, -z, y).
+async function printItems() {
+  const items = [];
+  for (const o of objects) {
+    if (o.kind !== "part" || o.missing) continue;
+    const lib = library.get(o.key);
+    if (!lib || lib.standin) continue;
+    const g = await getGeometry(o.key);
+    const s = new THREE.Vector3(); g.boundingBox.getSize(s);
+    items.push({ key: o.key, name: o.name, w: s.x, d: s.z, h: s.y });
+  }
+  return items;
+}
+function packPlates(items, W, D, gap) {
+  // shelf packing, biggest first; parts may turn 90° to fit
+  const sorted = [...items].sort((a, b) => Math.max(b.w, b.d) * Math.min(b.w, b.d) - Math.max(a.w, a.d) * Math.min(a.w, a.d) || b.d - a.d);
+  const plates = []; const tooBig = [];
+  const newPlate = () => { const p = { shelves: [], placed: [], y: 0 }; plates.push(p); return p; };
+  for (const it of sorted) {
+    let opts = [{ w: it.w, d: it.d, rot: false }, { w: it.d, d: it.w, rot: true }].filter(o => o.w <= W && o.d <= D);
+    if (!opts.length) { tooBig.push(it); continue; }
+    opts.sort((a, b) => a.d - b.d); // prefer lying long side along the shelf
+    let done = false;
+    for (const p of plates) {
+      for (const sh of p.shelves) for (const o of opts) {
+        if (!done && o.d <= sh.d && sh.x + o.w <= W) { p.placed.push({ ...it, x: sh.x, y: sh.y, w: o.w, d: o.d, rot: o.rot }); sh.x += o.w + gap; done = true; }
+      }
+      if (done) break;
+      const o = opts[0];
+      if (p.y + o.d <= D) { const sh = { y: p.y, d: o.d, x: o.w + gap }; p.shelves.push(sh); p.placed.push({ ...it, x: 0, y: p.y, w: o.w, d: o.d, rot: o.rot }); p.y += o.d + gap; done = true; break; }
+    }
+    if (!done) { const p = newPlate(); const o = opts[0]; p.shelves.push({ y: 0, d: o.d, x: o.w + gap }); p.placed.push({ ...it, x: 0, y: 0, w: o.w, d: o.d, rot: o.rot }); p.y = o.d + gap; }
+  }
+  return { plates, tooBig };
+}
+
+// minimal 3MF writer (stored zip, no compression)
+const CRC_T = (() => { const t = new Uint32Array(256); for (let n = 0; n < 256; n++) { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1; t[n] = c >>> 0; } return t; })();
+function crc32(u8) { let c = 0xffffffff; for (let i = 0; i < u8.length; i++) c = CRC_T[(c ^ u8[i]) & 0xff] ^ (c >>> 8); return (c ^ 0xffffffff) >>> 0; }
+function zipStore(files) {
+  const enc = new TextEncoder(); const parts = []; const central = []; let off = 0;
+  for (const [name, data] of files) {
+    const nb = enc.encode(name), d = typeof data === "string" ? enc.encode(data) : data, crc = crc32(d);
+    const lh = new DataView(new ArrayBuffer(30));
+    lh.setUint32(0, 0x04034b50, true); lh.setUint16(4, 20, true); lh.setUint16(8, 0, true);
+    lh.setUint32(14, crc, true); lh.setUint32(18, d.length, true); lh.setUint32(22, d.length, true); lh.setUint16(26, nb.length, true);
+    parts.push(new Uint8Array(lh.buffer), nb, d);
+    const ch = new DataView(new ArrayBuffer(46));
+    ch.setUint32(0, 0x02014b50, true); ch.setUint16(4, 20, true); ch.setUint16(6, 20, true);
+    ch.setUint32(16, crc, true); ch.setUint32(20, d.length, true); ch.setUint32(24, d.length, true); ch.setUint16(28, nb.length, true); ch.setUint32(42, off, true);
+    central.push(new Uint8Array(ch.buffer), nb);
+    off += 30 + nb.length + d.length;
+  }
+  const csize = central.reduce((s, a) => s + a.length, 0);
+  const end = new DataView(new ArrayBuffer(22));
+  end.setUint32(0, 0x06054b50, true); end.setUint16(8, files.length, true); end.setUint16(10, files.length, true); end.setUint32(12, csize, true); end.setUint32(16, off, true);
+  return new Blob([...parts, ...central, new Uint8Array(end.buffer)], { type: "model/3mf" });
+}
+function meshXml(g) {
+  // back to STL frame, centered in XY, sitting on z = 0; vertices de-duplicated
+  const p = g.attributes.position, idx = g.index;
+  const bb = g.boundingBox; const zmin = bb.min.y;
+  const map = new Map(); const verts = []; const remap = new Uint32Array(p.count);
+  for (let i = 0; i < p.count; i++) {
+    const x = p.getX(i), y = -p.getZ(i), z = p.getY(i) - zmin;
+    const k = `${x.toFixed(4)},${y.toFixed(4)},${z.toFixed(4)}`;
+    let id = map.get(k); if (id === undefined) { id = verts.length; map.set(k, id); verts.push(`<vertex x="${x.toFixed(4)}" y="${y.toFixed(4)}" z="${z.toFixed(4)}"/>`); }
+    remap[i] = id;
+  }
+  const tris = []; const n = idx ? idx.count : p.count;
+  for (let i = 0; i < n; i += 3) {
+    const a = remap[idx ? idx.getX(i) : i], b = remap[idx ? idx.getX(i + 1) : i + 1], c = remap[idx ? idx.getX(i + 2) : i + 2];
+    if (a !== b && b !== c && a !== c) tris.push(`<triangle v1="${a}" v2="${b}" v3="${c}"/>`);
+  }
+  return `<mesh><vertices>${verts.join("")}</vertices><triangles>${tris.join("")}</triangles></mesh>`;
+}
+const xmlEsc = (s) => String(s).replace(/[<>&"]/g, c => ({ "<": "&lt;", ">": "&gt;", "&": "&amp;", '"': "&quot;" }[c]));
+async function plate3mf(plate) {
+  const ids = new Map(); const res = []; const build = [];
+  for (const it of plate.placed) {
+    if (!ids.has(it.key)) { const id = ids.size + 1; ids.set(it.key, id); res.push(`<object id="${id}" type="model" name="${xmlEsc(it.name)}">${meshXml(await getGeometry(it.key))}</object>`); }
+    const cx = it.x + it.w / 2, cy = it.y + it.d / 2;
+    const m = it.rot ? `0 1 0 -1 0 0 0 0 1 ${cx.toFixed(3)} ${cy.toFixed(3)} 0` : `1 0 0 0 1 0 0 0 1 ${cx.toFixed(3)} ${cy.toFixed(3)} 0`;
+    build.push(`<item objectid="${ids.get(it.key)}" transform="${m}"/>`);
+  }
+  const model = `<?xml version="1.0" encoding="UTF-8"?>\n<model unit="millimeter" xml:lang="en-US" xmlns="http://schemas.microsoft.com/3dmanufacturing/core/2015/02"><metadata name="Application">Multiboard Designer</metadata><resources>${res.join("")}</resources><build>${build.join("")}</build></model>`;
+  return zipStore([
+    ["[Content_Types].xml", `<?xml version="1.0" encoding="UTF-8"?>\n<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="model" ContentType="application/vnd.ms-package.3dmanufacturing-3dmodel+xml"/></Types>`],
+    ["_rels/.rels", `<?xml version="1.0" encoding="UTF-8"?>\n<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Target="/3D/3dmodel.model" Id="rel0" Type="http://schemas.microsoft.com/3dmanufacturing/2013/01/3dmodel"/></Relationships>`],
+    ["3D/3dmodel.model", model],
+  ]);
+}
+
+let lastPack = null;
+async function renderPlates() {
+  const W = +$("plateW").value || 305, D = +$("plateD").value || 320, gap = Math.max(0, +$("plateGap").value || 0);
+  const items = await printItems();
+  lastPack = packPlates(items, W, D, gap);
+  const { plates, tooBig } = lastPack;
+  const skipped = objects.filter(o => o.kind === "part" && (o.missing || library.get(o.key)?.standin)).length;
+  $("platesSummary").textContent = `${items.length} part${items.length === 1 ? "" : "s"} on ${plates.length} plate${plates.length === 1 ? "" : "s"}`;
+  const el = $("plates"); el.innerHTML = "";
+  if (!items.length) {
+    el.innerHTML = `<p class="hint">No printable parts yet. Load your Multiboard STLs and place some parts.${skipped ? ` ${skipped} stand-in or missing part${skipped === 1 ? " is" : "s are"} left off.` : ""}</p>`;
+    return;
+  }
+  const accent = css("--accent"), ink = css("--ink"), line = css("--muted"), bad = css("--bad");
+  plates.forEach((p, i) => {
+    const card = document.createElement("div"); card.className = "plate";
+    const cv = document.createElement("canvas"); const S = 2; cv.width = W * S; cv.height = D * S;
+    const c = cv.getContext("2d");
+    c.strokeStyle = line; c.lineWidth = 2; c.strokeRect(1, 1, W * S - 2, D * S - 2);
+    c.font = `${11 * S}px "IBM Plex Mono", monospace`;
+    for (const it of p.placed) {
+      // plate y grows toward the back; draw back at the top
+      const x = it.x * S, y = (D - it.y - it.d) * S;
+      c.fillStyle = accent; c.globalAlpha = .28; c.fillRect(x, y, it.w * S, it.d * S); c.globalAlpha = 1;
+      c.strokeStyle = accent; c.strokeRect(x, y, it.w * S, it.d * S);
+      c.fillStyle = ink; c.save(); c.beginPath(); c.rect(x, y, it.w * S, it.d * S); c.clip();
+      c.fillText(it.name, x + 4 * S, y + 13 * S); c.restore();
+    }
+    const area = p.placed.reduce((s, it) => s + it.w * it.d, 0);
+    const meta = document.createElement("div"); meta.className = "meta";
+    meta.innerHTML = `<span></span><span></span>`;
+    meta.children[0].textContent = `Plate ${i + 1} · ${p.placed.length} part${p.placed.length === 1 ? "" : "s"}`;
+    meta.children[1].textContent = `${Math.round(area / (W * D) * 100)}% full · tallest ${Math.max(...p.placed.map(it => it.h)).toFixed(1)} mm`;
+    const btn = document.createElement("button"); btn.className = "btn"; btn.textContent = `Download plate ${i + 1} (.3mf)`;
+    btn.onclick = async () => offerFile(`multiboard-plate-${i + 1}.3mf`, await plate3mf(p));
+    card.append(cv, meta, btn); el.appendChild(card);
+  });
+  if (tooBig.length || skipped) {
+    const n = document.createElement("p"); n.className = "hint";
+    n.textContent = [tooBig.length ? `Too big for this plate: ${tooBig.map(t => t.name).join(", ")}.` : "", skipped ? `${skipped} stand-in or missing part${skipped === 1 ? " is" : "s are"} left off.` : ""].join(" ");
+    if (tooBig.length) n.style.color = bad;
+    el.appendChild(n);
+  }
+}
+$("btnPlates").onclick = () => { $("platesModal").hidden = false; renderPlates(); };
+$("platesClose").onclick = () => { $("platesModal").hidden = true; };
+$("platesModal").onclick = (e) => { if (e.target.id === "platesModal") $("platesModal").hidden = true; };
+$("printer").onchange = () => { const v = $("printer").value; if (v !== "custom") { const [w, d] = v.split("x"); $("plateW").value = w; $("plateD").value = d; } renderPlates(); };
+for (const id of ["plateW", "plateD"]) $(id).onchange = () => { $("printer").value = "custom"; renderPlates(); };
+$("plateGap").onchange = renderPlates;
+
+// ---------- HUD ----------
+function renderHud() {
+  const h = $("hud"); h.innerHTML = "";
+  const chip = (t, c) => { const s = document.createElement("span"); s.className = "chip " + (c || ""); s.textContent = t; h.appendChild(s); };
+  if (armedKey) chip(`Placing ${library.get(armedKey)?.name} · turn ${Math.round(THREE.MathUtils.radToDeg(spin) % 360)}° · R turns · Esc cancels`, "arm");
+  chip(collisions.length ? `${collisions.length} collision${collisions.length === 1 ? "" : "s"}` : "No collisions", collisions.length ? "warn" : "ok");
+  chip(`Grid ${PITCH} mm`);
+}
+
+// ---------- start ----------
+async function seedExample() {
+  // Example bench, clearly labeled: a stand-in 6×6 board on the floor with two mini PCs and a fan.
+  await addObject({ kind: "part", key: "standin-6x6-tile", name: "6×6 tile (stand-in)", cat: "Tiles & plates", pos: [0, STANDIN_T / 2, 0] });
+  await addObject({ kind: "box", dims: [117, 51, 112], name: "Mini PC", label: "Example: Mini PC A", color: "#4f7fb8", pos: [0, STANDIN_T + 25.5, -12.5] });
+  await addObject({ kind: "box", dims: [117, 51, 112], name: "Mini PC", label: "Example: Mini PC B", color: "#5f9d6b", pos: [0, STANDIN_T + 51 + 25.5 + 10, -12.5] });
+  await addObject({ kind: "box", dims: [120, 120, 25], name: "120 mm fan", label: "Example: exhaust fan", color: "#a8644c", pos: [0, STANDIN_T + 60, 70] });
+}
+const saved = store.get("mbd.project", null);
+if (saved && saved.objects?.length) await loadProject(saved); else { await seedExample(); afterChange(); }
+renderLibrary(); renderBom(); renderHud(); checkCollisions();
+
+renderer.setAnimationLoop(() => { orbit.update(); renderer.render(scene, camera); labelR.render(scene, camera); });
+window.__mbd = { objects: () => objects, collisions: () => collisions, library, arm, computePlacement };
+</script>

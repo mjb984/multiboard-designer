@@ -1,0 +1,6 @@
+# Multiboard part files are licensed for personal use and must not be redistributed.
+library/
+*.stl
+*.3mf
+*.step
+node_modules/
