@@ -9,6 +9,10 @@
 - [x] Project save/open, autosave in the browser
 - [x] Per-part snap data (mount face, grid offset), exportable JSON
 - [ ] Verify grid offsets against real tile/snap STLs
+- [x] Save/resume: autosave indicator, part files remembered in the browser (IndexedDB), New asks twice
+- [x] Multi-select (Shift+click) with align Min/Center/Max per axis; Center on board (C); Alt+click centers while placing
+- [x] Clip-hole detection and hole-to-hole snapping; clips needed estimated from lined-up holes
+- [ ] Verify hole detection and the hole-size → clip mapping on real Multiboard parts
 
 ## Phase 2: print prep (in progress)
 - [x] Plate packing for the H2C (305 × 320 mm), 3MF export per plate
