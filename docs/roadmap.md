@@ -12,7 +12,7 @@
 
 ## Phase 2: print prep (in progress)
 - [x] Plate packing for the H2C (305 × 320 mm), 3MF export per plate
-- [x] Nozzle per part group (defaults: tiles 0.6, shelves/bins 0.8, rest 0.4), one nozzle size per plate, nozzle column in the CSV
+- [x] Nozzle per part group (defaults: fine detail 0.4; tiles, panels, beams, bars 0.6; shelves, bins, baskets 0.8), one nozzle size per plate, nozzle column in the CSV
 - [ ] Tile stack prints (ironing stack with 0.2 mm gaps, or PLA/PETG multi-material)
 - [ ] Bambu-flavored 3MF (multi-plate project) so one file holds all plates
 

@@ -212,7 +212,7 @@ td.cat { color: var(--muted); font-size: 11px; }
       <button class="btn" id="platesClose" style="margin-left:auto">Close</button>
     </div>
     <div class="row" id="nozzleTable" aria-label="Nozzle per part group"></div>
-    <p class="hint">Each plate uses one nozzle size, so parts are grouped by the nozzle set for their part group. Defaults: tiles 0.6 mm, shelves and bins 0.8 mm, everything with a precise fit 0.4 mm. Turn on X-Y hole compensation in Bambu Studio for 0.6 and 0.8 mm plates. Parts keep the print orientation from their STL file and are packed onto as few plates as possible. Each plate exports as a .3mf you open in Bambu Studio to slice and send to the printer. Stand-in tiles and mock components are left off.</p>
+    <p class="hint">Each plate uses one nozzle size, so parts are grouped by the nozzle set for their part group. Defaults: fine detail (snaps, threads, pins, hooks) 0.4 mm; tiles, panels, beams and bars 0.6 mm; shelves, bins and baskets 0.8 mm. Turn on X-Y hole compensation in Bambu Studio for 0.6 and 0.8 mm plates. Parts keep the print orientation from their STL file and are packed onto as few plates as possible. Each plate exports as a .3mf you open in Bambu Studio to slice and send to the printer. Stand-in tiles and mock components are left off.</p>
     <div class="plates" id="plates"></div>
   </div>
 </div>
@@ -844,7 +844,7 @@ stage.addEventListener("drop", (e) => { e.preventDefault(); $("drop").hidden = t
 // ---------- print plates ----------
 // Footprints use the STL's own frame (print orientation). Bench frame (x, y, z) maps back to STL (x, -z, y).
 const NOZZLES = ["0.2", "0.4", "0.6", "0.8"];
-const NOZZLE_DEFAULTS = { "Tiles & plates": "0.6", "Shelves, trays & bins": "0.8" }; // everything else 0.4 (see docs/printing-notes.md)
+const NOZZLE_DEFAULTS = { "Tiles & plates": "0.6", "Brackets, beams & rails": "0.6", "Shelves, trays & bins": "0.8" }; // everything else 0.4 (see docs/printing-notes.md)
 let nozzleByGroup = store.get("mbd.nozzles", {});
 function nozzleFor(cat) { return nozzleByGroup[cat] || NOZZLE_DEFAULTS[cat] || "0.4"; }
 async function printItems() {
