@@ -133,6 +133,7 @@ td.cat { color: var(--muted); font-size: 11px; }
       <label class="inl">Snap
         <select id="snap"><option value="25">25 mm</option><option value="12.5" selected>12.5 mm</option><option value="5">5 mm</option><option value="1">1 mm</option><option value="0">off</option></select>
       </label>
+      <label class="inl" title="Line up clip holes when placing parts"><input type="checkbox" id="holeSnap" checked> Holes</label>
       <label class="inl">Turn
         <select id="rsnap"><option value="90" selected>90°</option><option value="45">45°</option><option value="15">15°</option><option value="0">free</option></select>
       </label>
@@ -154,6 +155,7 @@ td.cat { color: var(--muted); font-size: 11px; }
         <h2>Part library <small id="libCount">0 files</small></h2>
         <input type="text" id="libSearch" placeholder="Search parts" aria-label="Search parts">
         <p class="hint" id="libHint">Open the folder with your downloaded Multiboard STLs. Files stay on your computer; nothing is uploaded. Click a part, then click a board face to snap it on. Esc cancels.</p>
+        <p class="hint" id="libSaved" hidden></p>
       </section>
       <section class="pane" style="border:0">
         <div id="lib"></div>
@@ -179,6 +181,7 @@ td.cat { color: var(--muted); font-size: 11px; }
       <section class="pane">
         <h2>Parts list <small id="bomCount"></small></h2>
         <div id="bom"></div>
+        <div id="conn"></div>
         <div class="row">
           <button class="btn" id="btnCsv">Download CSV</button>
           <button class="btn" id="btnCopy">Copy</button>
@@ -279,6 +282,44 @@ let armedKey = null;
 const loader = new STLLoader();
 
 function libKey(path) { return path.split("/").pop().toLowerCase(); }
+
+// Part files are remembered in this browser (IndexedDB) so a saved layout reopens with its parts.
+// They never leave the computer.
+const partCache = (() => {
+  let dbp = null;
+  const open = () => dbp ||= new Promise((res, rej) => {
+    try { const r = indexedDB.open("mbd-parts", 1); r.onupgradeneeded = () => r.result.createObjectStore("files"); r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); }
+    catch (e) { rej(e); }
+  });
+  const run = async (mode, fn) => {
+    const db = await open();
+    return new Promise((res, rej) => { const t = db.transaction("files", mode); const out = fn(t.objectStore("files")); t.oncomplete = () => res(out); t.onerror = t.onabort = () => rej(t.error); });
+  };
+  return {
+    put: (key, rec) => run("readwrite", st => st.put(rec, key)),
+    all: () => run("readonly", st => { const v = st.getAll(), k = st.getAllKeys(); return { get rows() { return k.result.map((key, i) => [key, v.result[i]]); } }; }).then(o => o.rows),
+    clear: () => run("readwrite", st => st.clear()),
+  };
+})();
+async function restoreLibrary() {
+  let rows = [];
+  try { rows = await partCache.all(); } catch { return 0; }
+  for (const [key, rec] of rows) {
+    if (!rec?.file || library.get(key)?.file) continue;
+    library.set(key, { key, path: rec.path, name: prettyName(rec.path), cat: meta[key]?.cat || categorize(rec.path), file: rec.file, geom: null });
+  }
+  return rows.length;
+}
+function showSavedParts() {
+  const n = [...library.values()].filter(i => i.file).length;
+  const el = $("libSaved"); el.hidden = !n;
+  el.textContent = `${n} part file${n === 1 ? " is" : "s are"} remembered in this browser, so you only open the folder again for new parts. `;
+  if (n) {
+    const b = document.createElement("button"); b.className = "btn"; b.textContent = "Forget remembered parts"; b.style.marginTop = "4px";
+    b.onclick = async () => { try { await partCache.clear(); } catch {} toast("Remembered parts cleared. They stay loaded until you close this page."); el.hidden = true; };
+    el.appendChild(b);
+  }
+}
 function addFiles(files) {
   let n = 0;
   for (const f of files) {
@@ -288,10 +329,12 @@ function addFiles(files) {
     const cur = library.get(key);
     if (cur && cur.file) continue;
     library.set(key, { key, path, name: prettyName(path), cat: meta[key]?.cat || categorize(path), file: f, geom: cur?.geom || null });
+    partCache.put(key, { path, file: f }).catch(() => {});
     n++;
   }
   renderLibrary();
   relinkMissing();
+  showSavedParts();
   if (n) toast(`Added ${n} part file${n === 1 ? "" : "s"} to the library`);
   else toast("No .stl files found there");
 }
@@ -456,16 +499,21 @@ async function addObject(o) {
   await buildMesh(o);
   return o;
 }
-function select(o) {
+let selection = [];
+function select(o, additive = false) {
+  if (additive && o) {
+    selection = selection.includes(o) ? selection.filter(x => x !== o) : [...selection, o];
+    o = selection.includes(o) ? o : selection[selection.length - 1] || null;
+  } else selection = o ? [o] : [];
   selected = o;
-  for (const x of objects) if (x.mesh) x.mesh.material.emissive?.set(x === o ? 0x1d4f86 : 0x000000);
+  for (const x of objects) if (x.mesh) x.mesh.material.emissive?.set(selection.includes(x) ? (x === o ? 0x1d4f86 : 0x10304f) : 0x000000);
   if (o) tc.attach(o.mesh); else tc.detach();
   markCollisions();
   renderInspector();
 }
 function removeObject(o) {
   if (!o) return;
-  if (selected === o) select(null);
+  if (selected === o || selection.includes(o)) select(null);
   if (o.labelObj) o.labelObj.element.remove();
   scene.remove(o.mesh);
   objects = objects.filter(x => x !== o);
@@ -499,6 +547,141 @@ $("btnBox").onclick = () => addMock("box", [100, 40, 100], "Box");
 $("btnCyl").onclick = () => addMock("cyl", [40, 60, 40], "Cylinder");
 $("preset").onchange = (e) => { const p = PRESETS[e.target.value]; e.target.value = ""; if (p) addMock(p[0], [...p[1]], p[2]); };
 
+// ---------- clip holes ----------
+// Holes are found by slicing a part just inside one of its faces and keeping the closed loops that run
+// opposite to the outer outline (voids), are roughly round, and are at least 3 mm across.
+const UV = { x: ["z", "y"], y: ["x", "z"], z: ["x", "y"] };
+const holeCache = new Map();
+function sectionLoops(g, ax, at) {
+  const pos = g.attributes.position, idx = g.index, n = idx ? idx.count : pos.count;
+  const [u, v] = UV[ax];
+  const P = [new THREE.Vector3(), new THREE.Vector3(), new THREE.Vector3()];
+  const pn = new THREE.Vector3(); pn[ax] = 1;
+  const e1 = new THREE.Vector3(), e2 = new THREE.Vector3(), tn = new THREE.Vector3(), d3 = new THREE.Vector3();
+  const lex = (a, b) => a.x - b.x || a.y - b.y || a.z - b.z;
+  const cross = (A, B) => { if (lex(A, B) > 0) [A, B] = [B, A]; const t = (at - A[ax]) / (B[ax] - A[ax]); return [A[u] + t * (B[u] - A[u]), A[v] + t * (B[v] - A[v])]; };
+  const segs = [];
+  for (let i = 0; i < n; i += 3) {
+    for (let k = 0; k < 3; k++) P[k].fromBufferAttribute(pos, idx ? idx.getX(i + k) : i + k);
+    const side = P.map(p => p[ax] > at);
+    if (side[0] === side[1] && side[1] === side[2]) continue;
+    const pts = [];
+    for (let k = 0; k < 3; k++) { const a = P[k], b = P[(k + 1) % 3]; if ((a[ax] > at) !== (b[ax] > at)) pts.push(cross(a, b)); }
+    if (pts.length !== 2) continue;
+    tn.crossVectors(e1.subVectors(P[1], P[0]), e2.subVectors(P[2], P[0]));
+    d3.crossVectors(pn, tn);
+    const du = pts[1][0] - pts[0][0], dv = pts[1][1] - pts[0][1];
+    if (du * d3[u] + dv * d3[v] < 0) pts.reverse();
+    segs.push(pts);
+  }
+  const key = (p) => `${p[0].toFixed(3)},${p[1].toFixed(3)}`;
+  const byStart = new Map();
+  segs.forEach((sg, i) => { const k = key(sg[0]); (byStart.get(k) || byStart.set(k, []).get(k)).push(i); });
+  const used = new Uint8Array(segs.length), loops = [];
+  for (let i = 0; i < segs.length; i++) {
+    if (used[i]) continue;
+    const loop = []; let j = i;
+    while (j !== undefined && !used[j]) {
+      used[j] = 1; loop.push(segs[j][0]);
+      const next = (byStart.get(key(segs[j][1])) || []).find(x => !used[x]);
+      j = next;
+    }
+    if (loop.length >= 3) loops.push(loop);
+  }
+  return loops.map(L => {
+    let A = 0, cx = 0, cy = 0;
+    for (let i = 0; i < L.length; i++) { const [x0, y0] = L[i], [x1, y1] = L[(i + 1) % L.length]; const c = x0 * y1 - x1 * y0; A += c; cx += (x0 + x1) * c; cy += (y0 + y1) * c; }
+    A /= 2; const c = Math.abs(A) > 1e-9 ? [cx / (6 * A), cy / (6 * A)] : L[0];
+    const maxR = Math.max(...L.map(p => Math.hypot(p[0] - c[0], p[1] - c[1])));
+    return { area: A, c, maxR };
+  });
+}
+// holes on the face of g whose outward normal is (axis ax, sign s), in g's local frame
+function holesOn(g, ax, s) {
+  const ck = `${g.uuid}|${ax}|${s}`;
+  if (holeCache.has(ck)) return holeCache.get(ck);
+  const bb = g.boundingBox, ext = bb.max[ax] - bb.min[ax];
+  const inset = Math.min(1.2, ext * 0.3) + 0.013;
+  const at = s > 0 ? bb.max[ax] - inset : bb.min[ax] + inset;
+  let holes = [];
+  try {
+    const loops = sectionLoops(g, ax, at);
+    const outer = loops.reduce((m, l) => Math.abs(l.area) > Math.abs(m?.area || 0) ? l : m, null);
+    const [u, v] = UV[ax];
+    holes = loops.filter(l => outer && l !== outer && Math.sign(l.area) !== Math.sign(outer.area))
+      .map(l => ({ l, d: 2 * Math.sqrt(Math.abs(l.area) / Math.PI) }))
+      .filter(({ l, d }) => d >= 3 && Math.abs(l.area) / (Math.PI * l.maxR * l.maxR) > 0.55)
+      .map(({ l, d }) => { const p = new THREE.Vector3(); p[ax] = s > 0 ? bb.max[ax] : bb.min[ax]; p[u] = l.c[0]; p[v] = l.c[1]; return { p, d }; });
+  } catch { holes = []; }
+  holeCache.set(ck, holes);
+  return holes;
+}
+function dominantAxis(n) { const a = Math.abs; return a(n.x) > a(n.y) ? (a(n.x) > a(n.z) ? "x" : "z") : (a(n.y) > a(n.z) ? "y" : "z"); }
+const sameSize = (a, b) => Math.abs(a - b) <= 0.25 * Math.max(a, b);
+// Best in-plane shift that lines up ghost holes with target holes (world points). Returns {delta, pairs}.
+function lineUpHoles(gh, th, normal, maxShift) {
+  if (!gh.length || !th.length) return null;
+  const flat = (d) => d.clone().sub(normal.clone().multiplyScalar(d.dot(normal)));
+  const gc = gh.reduce((a, h) => a.add(h.p), new THREE.Vector3()).multiplyScalar(1 / gh.length);
+  const reach = maxShift + Math.max(...gh.map(h => h.p.distanceTo(gc))) + 1;
+  const near = th.filter(t => flat(t.p.clone().sub(gc)).length() < reach);
+  let best = null;
+  for (const g of gh) for (const t of near) {
+    if (!sameSize(g.d, t.d)) continue;
+    const delta = flat(t.p.clone().sub(g.p));
+    if (delta.length() > maxShift) continue;
+    const pairs = [];
+    for (const g2 of gh) {
+      const at = g2.p.clone().add(delta);
+      const m = near.find(t2 => sameSize(g2.d, t2.d) && flat(t2.p.clone().sub(at)).length() < 0.6);
+      if (m) pairs.push({ g: g2, t: m });
+    }
+    if (!best || pairs.length > best.pairs.length || (pairs.length === best.pairs.length && delta.length() < best.delta.length())) best = { delta, pairs };
+  }
+  return best;
+}
+function worldHoles(holes, matrix) { return holes.map(h => ({ p: h.p.clone().applyMatrix4(matrix), d: h.d })); }
+// holes on an object's mount face, in world space
+function mountHoles(o) {
+  if (o.kind !== "part" || o.missing) return [];
+  const m = partMeta(o.key); const ax = m.mount[1], s = m.mount[0] === "+" ? 1 : -1;
+  o.mesh.updateMatrixWorld();
+  return worldHoles(holesOn(o.mesh.geometry, ax, s), o.mesh.matrixWorld);
+}
+// holes on the face of `p` that `o` sits against, in world space
+function faceHolesUnder(o, p) {
+  if (p.kind !== "part" || p.missing) return { holes: [], normal: null };
+  const m = partMeta(o.key);
+  const dirW = new THREE.Vector3(...AXES[m.mount]).applyQuaternion(o.mesh.quaternion);
+  const dirP = dirW.clone().applyQuaternion(p.mesh.quaternion.clone().invert()).negate();
+  const ax = dominantAxis(dirP), s = Math.sign(dirP[ax]) || 1;
+  p.mesh.updateMatrixWorld();
+  return { holes: worldHoles(holesOn(p.mesh.geometry, ax, s), p.mesh.matrixWorld), normal: dirW.clone().negate() };
+}
+// recompute which holes line up for every mounted part
+function updateJoints() {
+  for (const o of objects) {
+    o.joints = [];
+    const p = o.mountedOn && objects.find(x => x.id === o.mountedOn);
+    if (!p || o.kind !== "part" || o.missing) continue;
+    const { holes, normal } = faceHolesUnder(o, p);
+    if (!normal) continue;
+    const r = lineUpHoles(mountHoles(o), holes, normal, 0.6);
+    if (r) o.joints = r.pairs.map(pr => Math.round(pr.t.d * 2) / 2);
+  }
+}
+const holeMarks = new THREE.Group(); scene.add(holeMarks);
+function showHoleMarks(pairs, normal) {
+  holeMarks.clear();
+  if (!pairs) return;
+  for (const { t } of pairs) {
+    const ring = new THREE.Mesh(new THREE.RingGeometry(t.d / 2 + 0.6, t.d / 2 + 2, 32), new THREE.MeshBasicMaterial({ color: css("--good") || "#2f8a4f", side: THREE.DoubleSide, depthTest: false, transparent: true, opacity: .9 }));
+    ring.position.copy(t.p).add(normal.clone().multiplyScalar(0.3));
+    ring.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), normal);
+    ring.renderOrder = 10; holeMarks.add(ring);
+  }
+}
+
 // ---------- placement with snapping ----------
 const ray = new THREE.Raycaster();
 const ndc = new THREE.Vector2();
@@ -524,7 +707,7 @@ async function arm(key) {
   ghost.visible = false; scene.add(ghost); spin = 0;
   renderHud();
 }
-function disarm() { armedKey = null; if (ghost) scene.remove(ghost); ghost = null; ghostInfo = null; renderLibrary(); renderHud(); }
+function disarm() { armedKey = null; if (ghost) scene.remove(ghost); ghost = null; ghostInfo = null; holeMarks.clear(); renderLibrary(); renderHud(); }
 
 // Find where the ghost goes for a pointer position: on a face of an existing object (grid-snapped in that object's
 // local frame), or on the floor (grid-snapped in world).
@@ -549,7 +732,8 @@ function computePlacement(ev) {
     const tm = target.kind === "part" ? partMeta(target.key) : { ox: 0, oy: 0 };
     const [u, v] = ax === "y" ? ["x", "z"] : ax === "x" ? ["z", "y"] : ["x", "y"];
     const ou = target.kind === "part" ? tb.min[u] + tm.ox : 0, ov = target.kind === "part" ? tb.min[v] + tm.oy : 0;
-    lp[u] = snapVal(lp[u], ou, step); lp[v] = snapVal(lp[v], ov, step);
+    if (ev.altKey) { lp[u] = (tb.min[u] + tb.max[u]) / 2; lp[v] = (tb.min[v] + tb.max[v]) / 2; }
+    else { lp[u] = snapVal(lp[u], ou, step); lp[v] = snapVal(lp[v], ov, step); }
     lp[ax] = ln[ax] > 0 ? tb.max[ax] : tb.min[ax];
     ln.set(0, 0, 0); ln[ax] = Math.sign(h.face.normal[ax]) || 1;
     point = lp.applyMatrix4(h.object.matrixWorld);
@@ -566,13 +750,27 @@ function computePlacement(ev) {
   q.premultiply(new THREE.Quaternion().setFromAxisAngle(normal, spin));
   const offset = mountDir.clone().multiply(half).applyQuaternion(q);
   const pos = point.clone().sub(offset);
-  return { pos, q, target };
+  // line up the part's clip holes with the board's holes, if both have them
+  let pairs = null;
+  if (target && target.kind === "part" && $("holeSnap").checked && !ev.altKey) {
+    const hit = hits[0];
+    const ln = hit.face.normal.clone(); const ax = dominantAxis(ln); const s = Math.sign(ln[ax]) || 1;
+    const th = worldHoles(holesOn(hit.object.geometry, ax, s), hit.object.matrixWorld);
+    const mAx = m.mount[1], mS = m.mount[0] === "+" ? 1 : -1;
+    const gm = new THREE.Matrix4().compose(pos, q, new THREE.Vector3(1, 1, 1));
+    const gh = worldHoles(holesOn(g, mAx, mS), gm);
+    const r = lineUpHoles(gh, th, normal, PITCH * 0.75);
+    if (r && r.pairs.length) { pos.add(r.delta); pairs = r.pairs.map(pr => ({ g: pr.g, t: pr.t })); }
+  }
+  return { pos, q, target, pairs, normal };
 }
 renderer.domElement.addEventListener("pointermove", (ev) => {
   if (!ghost) return;
   ghostInfo = computePlacement(ev);
   ghost.visible = !!ghostInfo;
   if (ghostInfo) { ghost.position.copy(ghostInfo.pos); ghost.quaternion.copy(ghostInfo.q); }
+  showHoleMarks(ghostInfo?.pairs, ghostInfo?.normal);
+  renderHud();
 });
 let downAt = null;
 renderer.domElement.addEventListener("pointerdown", (ev) => { downAt = [ev.clientX, ev.clientY]; });
@@ -588,11 +786,12 @@ renderer.domElement.addEventListener("pointerup", async (ev) => {
     if (!ev.shiftKey) { disarm(); select(o); }
     return;
   }
+  if (tc.axis) return; // clicked the move/rotate handles
   const r = renderer.domElement.getBoundingClientRect();
   ndc.set(((ev.clientX - r.left) / r.width) * 2 - 1, -((ev.clientY - r.top) / r.height) * 2 + 1);
   ray.setFromCamera(ndc, camera);
   const hit = ray.intersectObjects(objects.map(o => o.mesh), false)[0];
-  select(hit ? hit.object.userData.obj : null);
+  select(hit ? hit.object.userData.obj : null, ev.shiftKey);
 });
 
 // ---------- modes & keys ----------
@@ -613,8 +812,9 @@ window.addEventListener("keydown", (e) => {
   else if (e.key === "r" || e.key === "R") {
     if (ghost) { spin += Math.PI / 2; renderHud(); } else setMode("rotate");
   }
-  else if (e.key === "Delete" || e.key === "Backspace") removeObject(selected);
+  else if (e.key === "Delete" || e.key === "Backspace") { for (const o of selection.length ? [...selection] : [selected]) removeObject(o); }
   else if ((e.ctrlKey || e.metaKey) && (e.key === "d" || e.key === "D")) { e.preventDefault(); duplicate(selected); }
+  else if (e.key === "c" || e.key === "C") { if (!e.ctrlKey && !e.metaKey) centerOnBoard(selection.length ? selection : [selected]); }
 });
 
 // ---------- collisions ----------
@@ -623,6 +823,8 @@ let checkTimer = null;
 function scheduleCheck() { clearTimeout(checkTimer); checkTimer = setTimeout(checkCollisions, 120); }
 const _m = new THREE.Matrix4(), _ba = new THREE.Box3(), _bb = new THREE.Box3();
 function checkCollisions() {
+  try { updateJoints(); } catch {}
+  renderConnections();
   const ignore = $("ignoreMounted").checked;
   collisions = [];
   const list = objects.filter(o => o.mesh && !o.missing);
@@ -645,6 +847,7 @@ function checkCollisions() {
     if (hit) collisions.push([a, b]);
   }
   markCollisions(); renderCollisions(); renderHud();
+  if (selected && selection.length <= 1 && !document.activeElement?.closest?.("#inspector")) renderInspector();
 }
 $("ignoreMounted").onchange = checkCollisions;
 function markCollisions() {
@@ -670,11 +873,58 @@ function renderCollisions() {
 }
 function displayName(o) { return o.label || o.name; }
 
+// ---------- align & center ----------
+function worldBox(o) { o.mesh.updateMatrixWorld(); return new THREE.Box3().setFromObject(o.mesh); }
+function moveBy(o, d) { o.mesh.position.add(d); syncFromMesh(o); }
+function alignSelection(axis, where) {
+  if (selection.length < 2) return;
+  const ref = worldBox(selection[0]);
+  const refV = where === "min" ? ref.min[axis] : where === "max" ? ref.max[axis] : (ref.min[axis] + ref.max[axis]) / 2;
+  for (const o of selection.slice(1)) {
+    const b = worldBox(o);
+    const cur = where === "min" ? b.min[axis] : where === "max" ? b.max[axis] : (b.min[axis] + b.max[axis]) / 2;
+    const d = new THREE.Vector3(); d[axis] = refV - cur; moveBy(o, d);
+  }
+  afterChange(); toast(`Lined up ${selection.length - 1} object${selection.length === 2 ? "" : "s"} with ${displayName(selection[0])}`);
+}
+// center each object on the face of whatever it is mounted on, then pull it onto the nearest matching holes
+function centerOnBoard(list) {
+  let n = 0;
+  for (const o of list.filter(Boolean)) {
+    const p = o.mountedOn && objects.find(x => x.id === o.mountedOn);
+    if (!p) continue;
+    const pb = worldBox(p), ob = worldBox(o);
+    const size = new THREE.Vector3(); pb.getSize(size);
+    const normalAx = ["x", "y", "z"].reduce((a, k) => size[k] < size[a] ? k : a, "x");
+    const pc = new THREE.Vector3(), oc = new THREE.Vector3(); pb.getCenter(pc); ob.getCenter(oc);
+    const d = pc.sub(oc); d[normalAx] = 0; moveBy(o, d);
+    if ($("holeSnap").checked && o.kind === "part") {
+      const { holes, normal } = faceHolesUnder(o, p);
+      const r = normal && lineUpHoles(mountHoles(o), holes, normal, PITCH * 0.75);
+      if (r && r.pairs.length) moveBy(o, r.delta);
+    }
+    n++;
+  }
+  if (!n) { toast("Center works on parts placed onto a board. Place the part on a board face first."); return; }
+  afterChange(); toast(`Centered ${n} object${n === 1 ? "" : "s"} on ${n === 1 ? "its" : "their"} board`);
+}
+
 // ---------- inspector ----------
 function renderInspector() {
   const el = $("inspector");
   const o = selected;
-  if (!o) { el.innerHTML = `<h2>Selected</h2><p class="hint">Click an object to select it. G moves, R rotates, Del deletes, Ctrl+D duplicates. While placing a part, R turns it 90° and Shift+click keeps placing.</p>`; return; }
+  if (!o) { el.innerHTML = `<h2>Selected</h2><p class="hint">Click an object to select it; Shift+click adds more. G moves, R rotates, C centers on its board, Del deletes, Ctrl+D duplicates. While placing a part, R turns it 90°, Alt+click centers it on the face, and Shift+click keeps placing.</p>`; return; }
+  if (selection.length > 1) {
+    const ax = [["x", "X (left · center · right)"], ["y", "Y (bottom · center · top)"], ["z", "Z (back · center · front)"]];
+    el.innerHTML = `<h2>Selected <small>${selection.length} objects</small></h2>
+      <p class="hint">Lines everything up with the first one you picked: ${displayName(selection[0]).replace(/[<>&]/g, "")}.</p>
+      ${ax.map(([k, lab]) => `<div class="fld">${lab}<div class="row">${["min", "mid", "max"].map(w => `<button class="btn" data-ax="${k}" data-w="${w}">${w === "min" ? "Min" : w === "mid" ? "Center" : "Max"}</button>`).join("")}</div></div>`).join("")}
+      <div class="row"><button class="btn" id="mCenter">Center on board (C)</button><button class="btn" id="mDel">Delete all</button></div>`;
+    el.querySelectorAll("button[data-ax]").forEach(b => b.onclick = () => alignSelection(b.dataset.ax, b.dataset.w));
+    $("mCenter").onclick = () => centerOnBoard(selection);
+    $("mDel").onclick = () => { for (const x of [...selection]) removeObject(x); };
+    return;
+  }
   const e = new THREE.Euler().setFromQuaternion(o.mesh.quaternion, "XYZ");
   const deg = [e.x, e.y, e.z].map(v => Math.round(THREE.MathUtils.radToDeg(v) * 10) / 10);
   const bbs = new THREE.Vector3(); new THREE.Box3().copy(o.mesh.geometry.boundingBox).getSize(bbs);
@@ -705,7 +955,8 @@ function renderInspector() {
     </div>
     <div class="fld">Category<select id="iCat">${[...CATS.map(c => c[0]), "Other"].map(c => `<option>${c}</option>`).join("")}</select></div>
     <p class="hint">Mount face is the side that touches the board. Grid offset is the distance from the part's edge to its first hole; check it against a real print.</p>`}
-    <div class="row"><button class="btn" id="iDup">Duplicate</button><button class="btn" id="iDel">Delete</button></div>`;
+    ${o.kind === "part" && o.mountedOn ? `<p class="hint">${o.joints?.length ? `${o.joints.length} clip hole${o.joints.length === 1 ? "" : "s"} lined up with the board.` : "No clip holes lined up with the board yet."}</p>` : ""}
+    <div class="row">${o.mountedOn ? `<button class="btn" id="iCenter">Center on board</button>` : ""}<button class="btn" id="iDup">Duplicate</button><button class="btn" id="iDel">Delete</button></div>`;
   $("iName").value = o.name; $("iLabel").value = o.label || "";
   [$("iX").value, $("iY").value, $("iZ").value] = o.mesh.position.toArray().map(v => +v.toFixed(2));
   [$("iRX").value, $("iRY").value, $("iRZ").value] = deg;
@@ -738,6 +989,7 @@ function renderInspector() {
     for (const id of ["iMount", "iOX", "iOY", "iCat"]) $(id).onchange = commitM;
   }
   $("iDup").onclick = () => duplicate(o);
+  if ($("iCenter")) $("iCenter").onclick = () => centerOnBoard([o]);
   $("iDel").onclick = () => removeObject(o);
 }
 
@@ -765,10 +1017,39 @@ function renderBom() {
   const trs = $("bom").querySelectorAll("tbody tr");
   rows.forEach((r, i) => { trs[i].children[0].textContent = r.name; trs[i].children[1].textContent = r.cat; });
 }
+// clips needed, estimated from holes that line up between parts and their boards
+const CONNECTOR_TYPES = ["Multipoint snap", "Large thread bolt", "Small thread bolt", "Pegboard pin", "Push-fit pin", "None"];
+let connMap = store.get("mbd.connMap", {});
+const connFor = (d) => connMap[d] || (d >= 12 ? "Multipoint snap" : "Pegboard pin");
+function connectionRows() {
+  const by = new Map();
+  for (const o of objects) for (const d of o.joints || []) by.set(d, (by.get(d) || 0) + 1);
+  return [...by.entries()].sort((a, b) => b[0] - a[0]).map(([d, n]) => ({ d, n, type: connFor(d) }));
+}
+function renderConnections() {
+  const el = $("conn"); if (!el) return;
+  const rows = connectionRows();
+  if (!rows.length) { el.innerHTML = `<p class="hint">Clips needed show up here once parts sit on a board with their holes lined up.</p>`; return; }
+  el.innerHTML = `<table><thead><tr><th>Clips needed (from lined-up holes)</th><th style="text-align:right">Qty</th></tr></thead><tbody></tbody></table>`;
+  const tb = el.querySelector("tbody");
+  for (const r of rows) {
+    const tr = document.createElement("tr");
+    const td = document.createElement("td"); const sel = document.createElement("select");
+    sel.setAttribute("aria-label", `Clip for ${r.d} mm holes`);
+    for (const t of CONNECTOR_TYPES) { const op = document.createElement("option"); op.textContent = t; sel.appendChild(op); }
+    sel.value = r.type;
+    sel.onchange = () => { connMap[r.d] = sel.value; store.set("mbd.connMap", connMap); renderConnections(); };
+    const lab = document.createElement("div"); lab.className = "cat"; lab.textContent = `${r.d} mm holes`;
+    td.append(sel, lab);
+    const n = document.createElement("td"); n.className = "n"; n.textContent = r.n;
+    tr.append(td, n); tb.appendChild(tr);
+  }
+}
 function bomCsv() {
   const q = (s) => `"${String(s).replace(/"/g, '""')}"`;
   const lines = [["Part", "Group", "Type", "Qty", "Nozzle mm", "File"].map(q).join(",")];
   for (const r of bomRows()) lines.push([r.name, r.cat, r.printed ? (r.connector ? "Connector" : "Printed part") : "Component", r.qty, r.printed ? nozzleFor(r.cat) : "", r.file].map(q).join(","));
+  for (const c of connectionRows()) if (c.type !== "None") lines.push([c.type, `Clips for ${c.d} mm holes`, "Clip needed (estimated)", c.n, "0.4", ""].map(q).join(","));
   return lines.join("\r\n");
 }
 async function offerFile(filename, data) {
@@ -798,7 +1079,14 @@ function serialize() {
   };
 }
 let persistTimer = null;
-function persist() { clearTimeout(persistTimer); persistTimer = setTimeout(() => store.set("mbd.project", serialize()), 300); }
+let savedAt = null;
+function persist() {
+  clearTimeout(persistTimer);
+  persistTimer = setTimeout(() => {
+    try { localStorage.setItem("mbd.project", JSON.stringify(serialize())); savedAt = new Date(); } catch { savedAt = null; }
+    renderHud();
+  }, 300);
+}
 function afterChange(rerenderInspector = true) {
   if (rerenderInspector) renderInspector();
   renderBom(); scheduleCheck(); persist();
@@ -822,7 +1110,12 @@ $("projInput").onchange = async (e) => {
   const f = e.target.files[0]; e.target.value = ""; if (!f) return;
   try { await loadProject(JSON.parse(await f.text())); toast(`Opened ${f.name}`); } catch { toast("That file is not a Multiboard Designer project"); }
 };
-$("btnNew").onclick = () => loadProject({ objects: [] });
+let newArmed = null;
+$("btnNew").onclick = () => {
+  if (!newArmed) { $("btnNew").textContent = "Click again to clear"; newArmed = setTimeout(() => { newArmed = null; $("btnNew").textContent = "New"; }, 3000); return; }
+  clearTimeout(newArmed); newArmed = null; $("btnNew").textContent = "New";
+  loadProject({ objects: [] }); toast("Started a new layout. Your part files are still loaded.");
+};
 
 $("btnMeta").onclick = () => offerFile("multiboard-snap-data.json", JSON.stringify(meta, null, 2));
 $("btnMetaLoad").onclick = () => $("metaInput").click();
@@ -1017,7 +1310,9 @@ function renderHud() {
   const chip = (t, c) => { const s = document.createElement("span"); s.className = "chip " + (c || ""); s.textContent = t; h.appendChild(s); };
   if (armedKey) chip(`Placing ${library.get(armedKey)?.name} · turn ${Math.round(THREE.MathUtils.radToDeg(spin) % 360)}° · R turns · Esc cancels`, "arm");
   chip(collisions.length ? `${collisions.length} collision${collisions.length === 1 ? "" : "s"}` : "No collisions", collisions.length ? "warn" : "ok");
+  if (ghostInfo?.pairs?.length) chip(`${ghostInfo.pairs.length} hole${ghostInfo.pairs.length === 1 ? "" : "s"} lined up`, "ok");
   chip(`Grid ${PITCH} mm`);
+  if (savedAt) chip(`Saved in this browser ${savedAt.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}`);
 }
 
 // ---------- start ----------
@@ -1028,10 +1323,13 @@ async function seedExample() {
   await addObject({ kind: "box", dims: [117, 51, 112], name: "Mini PC", label: "Example: Mini PC B", color: "#5f9d6b", pos: [0, STANDIN_T + 51 + 25.5 + 10, -12.5] });
   await addObject({ kind: "box", dims: [120, 120, 25], name: "120 mm fan", label: "Example: exhaust fan", color: "#a8644c", pos: [0, STANDIN_T + 60, 70] });
 }
+await restoreLibrary();
+showSavedParts();
 const saved = store.get("mbd.project", null);
-if (saved && saved.objects?.length) await loadProject(saved); else { await seedExample(); afterChange(); }
+if (saved && saved.objects?.length) { await loadProject(saved); if (!objects.some(o => o.missing)) toast(`Picked up where you left off: ${objects.length} object${objects.length === 1 ? "" : "s"}`); }
+else { await seedExample(); afterChange(); }
 renderLibrary(); renderBom(); renderHud(); checkCollisions();
 
 renderer.setAnimationLoop(() => { orbit.update(); renderer.render(scene, camera); labelR.render(scene, camera); });
-window.__mbd = { objects: () => objects, collisions: () => collisions, library, arm, computePlacement };
+window.__mbd = { objects: () => objects, collisions: () => collisions, library, arm, computePlacement, holesOn, select, selection: () => selection, alignSelection, centerOnBoard, connectionRows };
 </script>
