@@ -21,7 +21,7 @@ Then click **Open parts folder** and choose the folder with your Multiboard STLs
 | Fix snapping for a part | Selected panel: Mount face (side touching the board) and Grid offset (edge to first hole). Remembered per file; Download snap data to keep it. |
 | Collisions | Overlaps turn red and are listed. Parts snapped onto each other are ignored by default. |
 | Parts list | Right panel. Download CSV or Copy. |
-| Print | Print plates: packs parts in their STL print orientation onto 305 × 320 mm plates; download each plate as .3mf, open in Bambu Studio, slice, send. |
+| Print | Print plates: pick a nozzle per part group, then parts are packed in their STL print orientation onto 305 × 320 mm plates, one nozzle size per plate. Download each plate as .3mf, open in Bambu Studio, slice, send. |
 
 ## Part files and license
 
