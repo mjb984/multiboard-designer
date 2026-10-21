@@ -211,7 +211,8 @@ td.cat { color: var(--muted); font-size: 11px; }
       <label class="inl">Gap mm <input type="number" id="plateGap" value="5" style="width:4em"></label>
       <button class="btn" id="platesClose" style="margin-left:auto">Close</button>
     </div>
-    <p class="hint">Parts keep the print orientation from their STL file and are packed onto as few plates as possible. Each plate exports as a .3mf you open in Bambu Studio to slice and send to the printer. Stand-in tiles and mock components are left off.</p>
+    <div class="row" id="nozzleTable" aria-label="Nozzle per part group"></div>
+    <p class="hint">Each plate uses one nozzle size, so parts are grouped by the nozzle set for their part group. Defaults: tiles 0.6 mm, shelves and bins 0.8 mm, everything with a precise fit 0.4 mm. Turn on X-Y hole compensation in Bambu Studio for 0.6 and 0.8 mm plates. Parts keep the print orientation from their STL file and are packed onto as few plates as possible. Each plate exports as a .3mf you open in Bambu Studio to slice and send to the printer. Stand-in tiles and mock components are left off.</p>
     <div class="plates" id="plates"></div>
   </div>
 </div>
@@ -766,8 +767,8 @@ function renderBom() {
 }
 function bomCsv() {
   const q = (s) => `"${String(s).replace(/"/g, '""')}"`;
-  const lines = [["Part", "Group", "Type", "Qty", "File"].map(q).join(",")];
-  for (const r of bomRows()) lines.push([r.name, r.cat, r.printed ? (r.connector ? "Connector" : "Printed part") : "Component", r.qty, r.file].map(q).join(","));
+  const lines = [["Part", "Group", "Type", "Qty", "Nozzle mm", "File"].map(q).join(",")];
+  for (const r of bomRows()) lines.push([r.name, r.cat, r.printed ? (r.connector ? "Connector" : "Printed part") : "Component", r.qty, r.printed ? nozzleFor(r.cat) : "", r.file].map(q).join(","));
   return lines.join("\r\n");
 }
 async function offerFile(filename, data) {
@@ -842,6 +843,10 @@ stage.addEventListener("drop", (e) => { e.preventDefault(); $("drop").hidden = t
 
 // ---------- print plates ----------
 // Footprints use the STL's own frame (print orientation). Bench frame (x, y, z) maps back to STL (x, -z, y).
+const NOZZLES = ["0.2", "0.4", "0.6", "0.8"];
+const NOZZLE_DEFAULTS = { "Tiles & plates": "0.6", "Shelves, trays & bins": "0.8" }; // everything else 0.4 (see docs/printing-notes.md)
+let nozzleByGroup = store.get("mbd.nozzles", {});
+function nozzleFor(cat) { return nozzleByGroup[cat] || NOZZLE_DEFAULTS[cat] || "0.4"; }
 async function printItems() {
   const items = [];
   for (const o of objects) {
@@ -850,7 +855,8 @@ async function printItems() {
     if (!lib || lib.standin) continue;
     const g = await getGeometry(o.key);
     const s = new THREE.Vector3(); g.boundingBox.getSize(s);
-    items.push({ key: o.key, name: o.name, w: s.x, d: s.z, h: s.y });
+    const cat = o.cat || lib.cat || "Other";
+    items.push({ key: o.key, name: o.name, cat, nozzle: nozzleFor(cat), w: s.x, d: s.z, h: s.y });
   }
   return items;
 }
@@ -935,11 +941,31 @@ async function plate3mf(plate) {
 }
 
 let lastPack = null;
+function renderNozzleTable(items) {
+  const el = $("nozzleTable"); el.innerHTML = "";
+  const cats = [...new Set(items.map(it => it.cat))].sort();
+  if (!cats.length) return;
+  for (const cat of cats) {
+    const lab = document.createElement("label"); lab.className = "inl";
+    const sel = document.createElement("select"); sel.setAttribute("aria-label", `Nozzle for ${cat}`);
+    for (const nz of NOZZLES) { const o = document.createElement("option"); o.value = nz; o.textContent = `${nz} mm`; sel.appendChild(o); }
+    sel.value = nozzleFor(cat);
+    sel.onchange = () => { nozzleByGroup[cat] = sel.value; store.set("mbd.nozzles", nozzleByGroup); renderPlates(); renderBom(); };
+    lab.append(document.createTextNode(cat), sel); el.appendChild(lab);
+  }
+}
 async function renderPlates() {
   const W = +$("plateW").value || 305, D = +$("plateD").value || 320, gap = Math.max(0, +$("plateGap").value || 0);
   const items = await printItems();
-  lastPack = packPlates(items, W, D, gap);
-  const { plates, tooBig } = lastPack;
+  // one nozzle size per plate: mixed diameters in one print are not supported on the H2C
+  const plates = [], tooBig = [];
+  for (const nz of NOZZLES) {
+    const r = packPlates(items.filter(it => it.nozzle === nz), W, D, gap);
+    for (const p of r.plates) { p.nozzle = nz; plates.push(p); }
+    tooBig.push(...r.tooBig);
+  }
+  lastPack = { plates, tooBig };
+  renderNozzleTable(items);
   const skipped = objects.filter(o => o.kind === "part" && (o.missing || library.get(o.key)?.standin)).length;
   $("platesSummary").textContent = `${items.length} part${items.length === 1 ? "" : "s"} on ${plates.length} plate${plates.length === 1 ? "" : "s"}`;
   const el = $("plates"); el.innerHTML = "";
@@ -965,10 +991,10 @@ async function renderPlates() {
     const area = p.placed.reduce((s, it) => s + it.w * it.d, 0);
     const meta = document.createElement("div"); meta.className = "meta";
     meta.innerHTML = `<span></span><span></span>`;
-    meta.children[0].textContent = `Plate ${i + 1} · ${p.placed.length} part${p.placed.length === 1 ? "" : "s"}`;
+    meta.children[0].textContent = `Plate ${i + 1} · ${p.nozzle} mm nozzle · ${p.placed.length} part${p.placed.length === 1 ? "" : "s"}`;
     meta.children[1].textContent = `${Math.round(area / (W * D) * 100)}% full · tallest ${Math.max(...p.placed.map(it => it.h)).toFixed(1)} mm`;
     const btn = document.createElement("button"); btn.className = "btn"; btn.textContent = `Download plate ${i + 1} (.3mf)`;
-    btn.onclick = async () => offerFile(`multiboard-plate-${i + 1}.3mf`, await plate3mf(p));
+    btn.onclick = async () => offerFile(`multiboard-plate-${i + 1}-${p.nozzle}mm.3mf`, await plate3mf(p));
     card.append(cv, meta, btn); el.appendChild(card);
   });
   if (tooBig.length || skipped) {
