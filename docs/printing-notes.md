@@ -12,3 +12,46 @@
 
 ## Findings
 - **2026-10-21 (Mauricio):** printing with a 0.8 mm nozzle, the holes need post-processing (cleanup) before parts fit. Working assumption: keep threads, snaps and anything with holes on 0.4 mm (or test 0.6 mm), and use 0.8 mm only where hole fit does not matter. To test: a small tile at 0.6 mm to see if holes come out clean.
+
+## Nozzle strategy (researched 2026-10-21, not yet tested on our printer)
+
+Goal: faster than 0.4 mm without holes that need cleanup.
+
+| Part group | Nozzle | Why |
+|---|---|---|
+| Snaps, bolts, pins, clips, threads | 0.4 mm (high-flow if available) | Small parts that need a precise fit; they print fast anyway, so a bigger nozzle saves little. |
+| Tiles / plates | **Test 0.6 mm** at 0.2-0.24 mm layers with X-Y hole compensation | Tiles take most of the print time. Holes come out undersized with bigger nozzles; hole compensation offsets them in the slicer instead of post-processing. |
+| Beams, bars, panels, brackets | 0.6 mm | Medium detail; agreed with Mauricio 2026-10-21. |
+| Shelves, bins, plain baskets, spacers | 0.8 mm | Little detail, so speed wins. |
+
+What the sources say:
+- **One nozzle size per print.** Mixing 0.4 and 0.8 mm in a single H2C print is not supported in Bambu Studio; one forum user got it working with a hand-built file and the printer warned about the mismatch. Two tool changes per layer would also eat the time saved. So: separate plates per nozzle size. (forum.bambulab.com/t/259143)
+- **0.6 vs 0.4 on Bambu:** forum testers saw only ~10% speed gain at the same 0.2 mm layer height, because the 0.4 nozzle is already near the hotend's melt limit. The real gain from a bigger nozzle comes from taller layers. (forum.bambulab.com/t/2164)
+- **High-flow hotend:** Bambu's high-flow hotends claim up to 62.5% more volumetric flow and up to 30% shorter prints. A retailer lists a 0.4 mm high-flow hotend for the H2C. This may be the best way to speed up fit-critical parts without losing detail.
+- **X-Y hole compensation** (Bambu Studio > Process > Quality) grows every closed hole by the set amount; Bambu's example: hole 0.5 mm too small, set +0.25 mm. (wiki.bambulab.com/en/software/bambu-studio/xy-hole-contour-compensation)
+- **Stack printing** (several tiles in one tall print, 0.2 mm gaps + ironing) cuts operator time more than nozzle size does: one overnight print instead of one plate per tile.
+
+### Test plan
+1. Print a 2x2 tile three ways: 0.4 / 0.2 layer (baseline), 0.6 / 0.24 layer with hole compensation +0.1 mm, 0.8 / 0.3 layer with hole compensation +0.2 mm.
+2. Print one bolt and one snap at 0.4 mm.
+3. Record print time and fit (bolt threads in by hand? snap clicks?) for each tile in the table below, then adjust compensation by 0.05 mm steps.
+
+| Tile | Nozzle / layer | Hole comp. | Time | Bolt fit | Snap fit | Notes |
+|---|---|---|---|---|---|---|
+| 2x2 | 0.4 / 0.20 | 0 | | | | baseline |
+| 2x2 | 0.6 / 0.24 | +0.10 | | | | |
+| 2x2 | 0.8 / 0.30 | +0.20 | | | | |
+
+## Idea for later: 0.8 mm infill and inner walls, 0.4 mm outer walls (Mauricio, 2026-10-21)
+
+Not for the Multiboard rack. Kept for future projects (Mauricio mentioned "minib3d").
+
+- **Setup:** the 0.4 mm nozzle prints outer walls at 0.2 mm layers in the display colors from the AMS. The 0.8 mm nozzle (left nozzle, fed outside the AMS) prints infill and inner walls at 0.4 mm layers, in a cheap neutral filament that never shows on the outside.
+- **Layer sync:** the 0.8 mm nozzle prints once for every two 0.4 mm layers. The order is either 0.2 + 0.2 then 0.4, or 0.2, then 0.4, then 0.2. Either way the heights line up every 0.4 mm.
+- **Why:** most of a part's volume is infill and inner walls, so a fat nozzle there cuts print time and cost while the visible surface keeps 0.4 mm quality.
+
+What exists today (from research, untested):
+- **Thicker infill:** OrcaSlicer and PrusaSlicer have "infill combination" (combine infill every N layers). It prints infill at 2x layer height with one nozzle; with a 0.8 mm nozzle feeding infill this is the layer-sync part above.
+- **Different filament per feature:** OrcaSlicer and PrusaSlicer can assign a separate filament/extruder to infill and to walls.
+- **Different nozzle sizes in one print:** not supported in Bambu Studio for the H2C as of 2026-10. One forum user printed 0.4 + 0.8 mm in one job with a hand-built file; the printer warned about the mismatch but printed (forum.bambulab.com/t/259143). PrusaSlicer is adding dual-nozzle-size support. Re-check Bambu Studio and OrcaSlicer releases before trying this.
+- **Cost:** each switch between nozzles is a tool change. With a change every layer, the time saved can disappear, so test on a part with a lot of infill first.
