@@ -40,3 +40,17 @@ What the sources say:
 | 2x2 | 0.4 / 0.20 | 0 | | | | baseline |
 | 2x2 | 0.6 / 0.24 | +0.10 | | | | |
 | 2x2 | 0.8 / 0.30 | +0.20 | | | | |
+
+## Idea for later: 0.8 mm infill and inner walls, 0.4 mm outer walls (Mauricio, 2026-10-21)
+
+Not for the Multiboard rack. Kept for future projects (Mauricio mentioned "minib3d").
+
+- **Setup:** the 0.4 mm nozzle prints outer walls at 0.2 mm layers in the display colors from the AMS. The 0.8 mm nozzle (left nozzle, fed outside the AMS) prints infill and inner walls at 0.4 mm layers, in a cheap neutral filament that never shows on the outside.
+- **Layer sync:** the 0.8 mm nozzle prints once for every two 0.4 mm layers. The order is either 0.2 + 0.2 then 0.4, or 0.2, then 0.4, then 0.2. Either way the heights line up every 0.4 mm.
+- **Why:** most of a part's volume is infill and inner walls, so a fat nozzle there cuts print time and cost while the visible surface keeps 0.4 mm quality.
+
+What exists today (from research, untested):
+- **Thicker infill:** OrcaSlicer and PrusaSlicer have "infill combination" (combine infill every N layers). It prints infill at 2x layer height with one nozzle; with a 0.8 mm nozzle feeding infill this is the layer-sync part above.
+- **Different filament per feature:** OrcaSlicer and PrusaSlicer can assign a separate filament/extruder to infill and to walls.
+- **Different nozzle sizes in one print:** not supported in Bambu Studio for the H2C as of 2026-10. One forum user printed 0.4 + 0.8 mm in one job with a hand-built file; the printer warned about the mismatch but printed (forum.bambulab.com/t/259143). PrusaSlicer is adding dual-nozzle-size support. Re-check Bambu Studio and OrcaSlicer releases before trying this.
+- **Cost:** each switch between nozzles is a tool change. With a change every layer, the time saved can disappear, so test on a part with a lot of infill first.
